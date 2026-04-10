@@ -1,0 +1,52 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import { getAllSources } from '@/lib/supabase/queries';
+
+const sources = await getAllSources().catch(() => []);
+---
+
+<AdminLayout title="ソース管理" activeNav="sources">
+  <div class="flex items-center justify-between mb-6">
+    <p class="text-sm text-text-secondary">{sources.length} 件のソース</p>
+    <a href="/admin/sources/new" class="btn-primary">+ ソースを追加</a>
+  </div>
+
+  <div class="bg-surface border border-border rounded-md divide-y divide-border">
+    {sources.length === 0 && (
+      <div class="px-5 py-8 text-center">
+        <p class="text-sm text-text-muted">ソースがまだ登録されていません</p>
+        <a href="/admin/sources/new" class="text-sm text-accent hover:underline mt-2 inline-block">
+          最初のソースを追加する →
+        </a>
+      </div>
+    )}
+    {sources.map(source => (
+      <div class="px-5 py-4 flex items-center justify-between gap-4">
+        <div class="flex items-center gap-3 min-w-0">
+          <!-- Enabled indicator -->
+          <span class:list={[
+            'flex-shrink-0 w-2 h-2 rounded-full',
+            source.enabled ? 'bg-score-high' : 'bg-border',
+          ]} />
+          <div class="min-w-0">
+            <p class="text-sm font-medium text-text-primary truncate">{source.name}</p>
+            <p class="text-xs text-text-muted truncate">{source.list_url}</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-3 flex-shrink-0">
+          <span class="badge-neutral">{source.source_type}</span>
+          <span class="text-xs text-text-muted">優先度 {source.priority}</span>
+          <a href={`/admin/sources/${source.id}/edit`} class="text-xs text-accent hover:underline">
+            編集
+          </a>
+          <form method="POST" action="/api/admin/sources/run" class="inline">
+            <input type="hidden" name="source_id" value={source.id} />
+            <button type="submit" class="text-xs text-text-secondary hover:text-text-primary border border-border rounded px-2 py-0.5 hover:bg-[#F0F0EE] transition-colors">
+              実行
+            </button>
+          </form>
+        </div>
+      </div>
+    ))}
+  </div>
+</AdminLayout>

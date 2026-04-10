@@ -1,0 +1,84 @@
+---
+import '@/styles/global.css';
+
+interface Props {
+  title: string;
+  description?: string;
+  ogImage?: string;
+  canonical?: string;
+}
+
+const {
+  title,
+  description = 'AIおじさんによる生成AI・テクノロジーの分析とコメンタリー',
+  ogImage,
+  canonical,
+} = Astro.props;
+
+const siteTitle = 'AIおじさん.com';
+const fullTitle = title === siteTitle ? title : `${title} — ${siteTitle}`;
+---
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{fullTitle}</title>
+  <meta name="description" content={description} />
+  {canonical && <link rel="canonical" href={canonical} />}
+
+  <!-- OG -->
+  <meta property="og:title"       content={fullTitle} />
+  <meta property="og:description" content={description} />
+  <meta property="og:type"        content="website" />
+  {ogImage && <meta property="og:image" content={ogImage} />}
+
+  <!-- Fonts: minimal, system-first -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
+</head>
+<body class="bg-background text-text-primary font-sans antialiased">
+  <!-- Header -->
+  <header class="border-b border-border bg-surface sticky top-0 z-10">
+    <div class="max-w-admin mx-auto px-6 py-4 flex items-center justify-between">
+      <a href="/" class="group">
+        <span class="text-xs text-text-muted uppercase tracking-widest">AI分析・コメンタリー</span>
+        <p class="text-lg font-semibold text-text-primary group-hover:text-accent transition-colors">
+          AIおじさん.com
+        </p>
+      </a>
+      <nav class="flex items-center gap-6">
+        <a href="/articles" class="text-sm text-text-secondary hover:text-text-primary transition-colors">
+          記事一覧
+        </a>
+        <a href="/about" class="text-sm text-text-secondary hover:text-text-primary transition-colors">
+          About
+        </a>
+        <a href="https://x.com/" target="_blank" rel="noopener noreferrer"
+          class="text-sm text-text-secondary hover:text-text-primary transition-colors">
+          𝕏
+        </a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main -->
+  <main>
+    <slot />
+  </main>
+
+  <!-- Footer -->
+  <footer class="border-t border-border mt-20 py-10">
+    <div class="max-w-admin mx-auto px-6 flex items-center justify-between">
+      <p class="text-xs text-text-muted">© 2024 AIおじさん.com</p>
+      <div class="flex gap-4">
+        <a href="/about" class="text-xs text-text-muted hover:text-text-secondary transition-colors">About</a>
+        <a href="https://x.com/" target="_blank" rel="noopener noreferrer"
+          class="text-xs text-text-muted hover:text-text-secondary transition-colors">𝕏</a>
+      </div>
+    </div>
+  </footer>
+</body>
+</html>

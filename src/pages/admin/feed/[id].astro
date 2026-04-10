@@ -1,0 +1,252 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import { getArticleById } from '@/lib/supabase/queries';
+import { getAdminClient } from '@/lib/supabase/server';
+
+const { id } = Astro.params;
+if (!id) return Astro.redirect('/admin/feed');
+
+const article = await getArticleById(id);
+const insights = (article as any).article_ai_insights as import('@/types').ArticleAiInsights | null;
+const actions = ((article as any).article_actions ?? []).map((a: { action_type: string }) => a.action_type) as string[];
+
+// Fetch related style chunks
+const db = getAdminClient();
+type XPostRow = { variant_label: string; text: string };
+type DraftRow = { id: string; draft_title: string; status: string; created_at: string; wordpress_post_id: number | null };
+
+const { data: xPostsRaw } = await db
+  .from('generated_x_posts')
+  .select('*')
+  .eq('article_id', id)
+  .order('created_at', { ascending: false });
+const xPosts = (xPostsRaw ?? []) as XPostRow[];
+
+const { data: draftsRaw } = await db
+  .from('generated_drafts')
+  .select('id, draft_title, status, created_at, wordpress_post_id')
+  .eq('article_id', id)
+  .order('created_at', { ascending: false });
+const drafts = (draftsRaw ?? []) as DraftRow[];
+---
+
+<AdminLayout title={article.title} activeNav="feed">
+  <!-- Breadcrumb -->
+  <div class="mb-5">
+    <a href="/admin/feed" class="text-xs text-text-muted hover:text-text-secondary transition-colors">
+      ← ニュースフィード
+    </a>
+  </div>
+
+  <div class="grid grid-cols-3 gap-5">
+    <!-- Main content: left 2 cols -->
+    <div class="col-span-2 space-y-4">
+      <!-- Article header -->
+      <div class="bg-surface border border-border rounded-md p-5">
+        <div class="flex items-center gap-2 mb-2">
+          <span class="text-xs text-text-muted">{(article as any).sources?.name}</span>
+          {article.published_at && (
+            <span class="text-xs text-text-muted">
+              · {new Date(article.published_at).toLocaleDateString('ja-JP')}
+            </span>
+          )}
+        </div>
+        <h2 class="text-lg font-semibold text-text-primary leading-snug mb-3">{article.title}</h2>
+        <a href={article.canonical_url} target="_blank" rel="noopener noreferrer"
+          class="text-xs text-accent hover:underline break-all">
+          {article.canonical_url} ↗
+        </a>
+      </div>
+
+      <!-- Tabs: Summary / Full text -->
+      <div class="bg-surface border border-border rounded-md" x-data="{ tab: 'summary' }">
+        <div class="flex border-b border-border">
+          <button class="tab-btn" data-tab="summary">AIサマリー</button>
+          <button class="tab-btn" data-tab="text">本文テキスト</button>
+        </div>
+        <div class="p-5">
+          <!-- Summary tab -->
+          <div id="tab-summary">
+            {!insights ? (
+              <p class="text-sm text-text-muted">AI処理がまだ完了していません</p>
+            ) : (
+              <div class="space-y-4">
+                <div>
+                  <p class="text-xs font-medium text-text-muted uppercase tracking-wide mb-1.5">短サマリー</p>
+                  <p class="text-sm text-text-primary leading-relaxed">{insights.short_summary}</p>
+                </div>
+                <div>
+                  <p class="text-xs font-medium text-text-muted uppercase tracking-wide mb-1.5">詳細サマリー</p>
+                  <p class="text-sm text-text-primary leading-relaxed whitespace-pre-wrap">{insights.long_summary}</p>
+                </div>
+                {insights.reasoning && (
+                  <div>
+                    <p class="text-xs font-medium text-text-muted uppercase tracking-wide mb-1.5">スコアの根拠</p>
+                    <p class="text-sm text-text-secondary leading-relaxed">{insights.reasoning}</p>
+                  </div>
+                )}
+                <div class="flex flex-wrap gap-1.5">
+                  {insights.topics?.map((t: string) => (
+                    <span class="tag">{t}</span>
+                  ))}
+                  {insights.tags?.map((t: string) => (
+                    <span class="tag-outline">{t}</span>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <!-- Text tab (hidden by default) -->
+          <div id="tab-text" class="hidden">
+            <pre class="text-xs text-text-secondary leading-relaxed whitespace-pre-wrap font-sans overflow-auto max-h-96">
+              {article.extracted_text ?? '本文が取得できていません'}
+            </pre>
+          </div>
+        </div>
+      </div>
+
+      <!-- Generated drafts -->
+      {drafts && drafts.length > 0 && (
+        <div class="bg-surface border border-border rounded-md">
+          <div class="px-5 py-3 border-b border-border">
+            <h3 class="text-sm font-semibold text-text-primary">生成済み下書き</h3>
+          </div>
+          <div class="divide-y divide-border">
+            {drafts.map(draft => (
+              <div class="px-5 py-3 flex items-center justify-between">
+                <div>
+                  <p class="text-sm text-text-primary">{draft.draft_title}</p>
+                  <p class="text-xs text-text-muted">{new Date(draft.created_at).toLocaleString('ja-JP')}</p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class:list={[
+                    'inline-block px-2 py-0.5 rounded text-xs',
+                    draft.status === 'sent_to_wordpress' ? 'bg-blue-50 text-blue-600' :
+                    draft.status === 'published' ? 'bg-score-highBg text-score-high' :
+                    'bg-[#F0F0EE] text-text-secondary',
+                  ]}>
+                    {draft.status}
+                  </span>
+                  <a href={`/admin/drafts/${draft.id}`} class="text-xs text-accent hover:underline">詳細</a>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+
+    <!-- Sidebar: right 1 col -->
+    <div class="space-y-4">
+      <!-- Score card -->
+      {insights && (
+        <div class="bg-surface border border-border rounded-md p-4">
+          <p class="text-xs font-medium text-text-muted uppercase tracking-wide mb-3">スコア</p>
+          <div class="space-y-2">
+            {[
+              { label: '総合', value: insights.overall_score },
+              { label: 'AIおじさん適性', value: insights.ai_ojisan_fit_score },
+              { label: 'ブログ適性', value: insights.blog_post_potential_score },
+              { label: 'X適性', value: insights.x_post_potential_score },
+              { label: '新鮮度', value: insights.novelty_score },
+            ].map(({ label, value }) => value != null && (
+              <div class="flex items-center justify-between">
+                <span class="text-xs text-text-secondary">{label}</span>
+                <span class:list={[
+                  'text-xs font-semibold',
+                  value >= 7 ? 'text-score-high' : value >= 5 ? 'text-score-mid' : 'text-score-low',
+                ]}>
+                  {value.toFixed(1)}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <!-- Actions -->
+      <div class="bg-surface border border-border rounded-md p-4 space-y-2">
+        <p class="text-xs font-medium text-text-muted uppercase tracking-wide mb-3">アクション</p>
+
+        <form method="POST" action="/api/admin/articles/action">
+          <input type="hidden" name="article_id" value={article.id} />
+          <input type="hidden" name="action_type" value="favorite" />
+          <button type="submit" class:list={['action-btn w-full', actions.includes('favorite') ? 'action-btn-active' : '']}>
+            {actions.includes('favorite') ? '★ お気に入り済' : '☆ お気に入り'}
+          </button>
+        </form>
+
+        <form method="POST" action="/api/admin/articles/action">
+          <input type="hidden" name="article_id" value={article.id} />
+          <input type="hidden" name="action_type" value="exclude" />
+          <button type="submit" class:list={['action-btn w-full', actions.includes('exclude') ? 'text-red-500 border-red-200' : '']}>
+            除外{actions.includes('exclude') ? '済み' : 'する'}
+          </button>
+        </form>
+
+        <hr class="border-border my-2" />
+
+        {!insights && (
+          <form method="POST" action="/api/admin/articles/analyze">
+            <input type="hidden" name="article_id" value={article.id} />
+            <button type="submit" class="action-btn w-full">
+              AI分析を実行
+            </button>
+          </form>
+        )}
+
+        <form method="POST" action="/api/admin/articles/generate-draft">
+          <input type="hidden" name="article_id" value={article.id} />
+          <button type="submit" class="action-btn-primary w-full">
+            ブログ下書きを生成
+          </button>
+        </form>
+
+        <form method="POST" action="/api/admin/articles/generate-x-posts">
+          <input type="hidden" name="article_id" value={article.id} />
+          <button type="submit" class="action-btn w-full">
+            X投稿案を生成
+          </button>
+        </form>
+      </div>
+
+      <!-- X post drafts -->
+      {xPosts && xPosts.length > 0 && (
+        <div class="bg-surface border border-border rounded-md p-4">
+          <p class="text-xs font-medium text-text-muted uppercase tracking-wide mb-3">X投稿案</p>
+          <div class="space-y-3">
+            {xPosts.map((post: { variant_label: string; text: string }) => (
+              <div>
+                <p class="text-xs text-text-muted mb-1">{post.variant_label}</p>
+                <p class="text-xs text-text-primary leading-relaxed bg-[#F5F5F3] rounded p-2">{post.text}</p>
+                <button
+                  onclick={`navigator.clipboard.writeText(${JSON.stringify(post.text)})`}
+                  class="text-xs text-accent hover:underline mt-1"
+                >
+                  コピー
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  </div>
+</AdminLayout>
+
+<script>
+  // Simple tab switching
+  const tabBtns = document.querySelectorAll<HTMLButtonElement>('.tab-btn');
+  tabBtns.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const tab = btn.dataset.tab;
+      document.querySelectorAll('[id^="tab-"]').forEach(el => el.classList.add('hidden'));
+      document.getElementById(`tab-${tab}`)?.classList.remove('hidden');
+      tabBtns.forEach(b => b.classList.remove('tab-btn-active'));
+      btn.classList.add('tab-btn-active');
+    });
+  });
+  // Activate first tab
+  tabBtns[0]?.click();
+</script>

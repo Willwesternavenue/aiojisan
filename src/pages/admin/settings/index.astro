@@ -1,0 +1,73 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+---
+
+<AdminLayout title="設定" activeNav="settings">
+  <div class="max-w-2xl space-y-6">
+
+    <!-- WordPress -->
+    <section class="bg-surface border border-border rounded-md p-5">
+      <h2 class="text-sm font-semibold text-text-primary mb-4">WordPress 連携</h2>
+      <div class="space-y-2 text-sm">
+        <div class="flex justify-between">
+          <span class="text-text-secondary">ベースURL</span>
+          <span class="text-text-primary font-mono text-xs">{import.meta.env.WORDPRESS_BASE_URL ?? '未設定'}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-text-secondary">ユーザー名</span>
+          <span class="text-text-primary">{import.meta.env.WORDPRESS_USERNAME ?? '未設定'}</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-text-secondary">アプリパスワード</span>
+          <span class="text-text-muted text-xs">設定済み（表示不可）</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- AI -->
+    <section class="bg-surface border border-border rounded-md p-5">
+      <h2 class="text-sm font-semibold text-text-primary mb-4">AI設定</h2>
+      <div class="space-y-2 text-sm">
+        <div class="flex justify-between">
+          <span class="text-text-secondary">プロバイダー</span>
+          <span class="text-text-primary">OpenAI</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-text-secondary">モデル（サマリー）</span>
+          <span class="text-text-primary font-mono text-xs">gpt-4o-mini</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-text-secondary">モデル（下書き生成）</span>
+          <span class="text-text-primary font-mono text-xs">gpt-4o</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-text-secondary">Embeddingモデル</span>
+          <span class="text-text-primary font-mono text-xs">text-embedding-3-small</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Cron -->
+    <section class="bg-surface border border-border rounded-md p-5">
+      <h2 class="text-sm font-semibold text-text-primary mb-4">Cronスケジュール</h2>
+      <div class="space-y-2 text-sm">
+        <div class="flex justify-between">
+          <span class="text-text-secondary">ソース取得</span>
+          <span class="text-text-muted font-mono text-xs">*/15 * * * *</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-text-secondary">AI処理</span>
+          <span class="text-text-muted font-mono text-xs">0 * * * *</span>
+        </div>
+        <div class="flex justify-between">
+          <span class="text-text-secondary">優先ソース更新</span>
+          <span class="text-text-muted font-mono text-xs">0 6,18 * * *</span>
+        </div>
+      </div>
+      <p class="text-xs text-text-muted mt-3">
+        Cronの設定は <code class="font-mono">vercel.json</code> で管理されています
+      </p>
+    </section>
+
+  </div>
+</AdminLayout>

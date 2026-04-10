@@ -1,0 +1,88 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import { getDashboardStats } from '@/lib/supabase/queries';
+import { getAdminClient } from '@/lib/supabase/server';
+
+const stats = await getDashboardStats().catch(() => ({
+  enabledSources: 0, newArticlesToday: 0, highScoreItems: 0, draftsThisWeek: 0,
+}));
+
+// Recent source runs
+const db = getAdminClient();
+const { data: recentRunsRaw } = await db
+  .from('source_runs')
+  .select('*, sources(name)')
+  .order('started_at', { ascending: false })
+  .limit(10)
+  .then((r: any) => r)
+  .catch(() => ({ data: [] }));
+
+type RunRow = {
+  id: string;
+  status: string;
+  items_inserted: number;
+  items_found: number;
+  started_at: string;
+  sources: { name: string } | null;
+};
+const recentRuns = (recentRunsRaw ?? []) as RunRow[];
+---
+
+<AdminLayout title="ダッシュボード" activeNav="dashboard">
+  <!-- Stats row -->
+  <div class="grid grid-cols-4 gap-4 mb-8">
+    <div class="bg-surface border border-border rounded-md p-4">
+      <p class="text-xs text-text-muted uppercase tracking-wide">有効ソース数</p>
+      <p class="text-3xl font-semibold text-text-primary mt-1">{stats.enabledSources}</p>
+    </div>
+    <div class="bg-surface border border-border rounded-md p-4">
+      <p class="text-xs text-text-muted uppercase tracking-wide">新着（24h）</p>
+      <p class="text-3xl font-semibold text-text-primary mt-1">{stats.newArticlesToday}</p>
+    </div>
+    <div class="bg-surface border border-border rounded-md p-4">
+      <p class="text-xs text-text-muted uppercase tracking-wide">高スコア記事</p>
+      <p class="text-3xl font-semibold text-text-primary mt-1">{stats.highScoreItems}</p>
+    </div>
+    <div class="bg-surface border border-border rounded-md p-4">
+      <p class="text-xs text-text-muted uppercase tracking-wide">下書き（7日）</p>
+      <p class="text-3xl font-semibold text-text-primary mt-1">{stats.draftsThisWeek}</p>
+    </div>
+  </div>
+
+  <!-- Quick links -->
+  <div class="flex gap-3 mb-8">
+    <a href="/admin/feed" class="btn-primary text-sm">ニュースフィードを見る</a>
+    <a href="/admin/sources/new" class="btn-secondary text-sm">ソースを追加</a>
+    <a href="/admin/drafts" class="btn-secondary text-sm">下書き履歴</a>
+  </div>
+
+  <!-- Recent runs -->
+  <div class="bg-surface border border-border rounded-md">
+    <div class="px-5 py-3 border-b border-border">
+      <h2 class="text-sm font-semibold text-text-primary">最近のIngestion実行</h2>
+    </div>
+    <div class="divide-y divide-border">
+      {recentRuns?.length === 0 && (
+        <p class="px-5 py-4 text-sm text-text-muted">まだ実行履歴がありません</p>
+      )}
+      {recentRuns?.map(run => (
+        <div class="px-5 py-3 flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <span class:list={[
+              'inline-block w-2 h-2 rounded-full',
+              run.status === 'completed' ? 'bg-score-high' :
+              run.status === 'failed'    ? 'bg-score-low' : 'bg-score-mid',
+            ]} />
+            <span class="text-sm text-text-primary">{run.sources?.name ?? '不明'}</span>
+            <span class="text-xs text-text-muted">
+              {run.items_inserted} 件追加 / {run.items_found} 件発見
+            </span>
+          </div>
+          <span class="text-xs text-text-muted">
+            {new Date(run.started_at).toLocaleString('ja-JP')}
+          </span>
+        </div>
+      ))}
+    </div>
+  </div>
+</AdminLayout>

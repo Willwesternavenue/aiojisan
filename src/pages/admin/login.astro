@@ -1,0 +1,47 @@
+---
+// Admin login page — no auth required
+import '@/styles/global.css';
+const error = Astro.url.searchParams.get('error');
+---
+
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ログイン — AIおじさん Admin</title>
+  <meta name="robots" content="noindex,nofollow" />
+</head>
+<body class="min-h-screen bg-[#F5F5F3] flex items-center justify-center font-sans">
+  <div class="w-full max-w-sm">
+    <div class="text-center mb-8">
+      <p class="text-xs text-text-muted uppercase tracking-widest mb-1">Admin</p>
+      <h1 class="text-xl font-semibold text-text-primary">AIおじさん</h1>
+    </div>
+
+    <div class="bg-surface border border-border rounded-md p-6">
+      {error && (
+        <div class="mb-4 px-3 py-2 rounded bg-score-lowBg border border-red-200 text-xs text-score-low">
+          メールアドレスまたはパスワードが正しくありません
+        </div>
+      )}
+      <form method="POST" action="/api/admin/login" class="space-y-4">
+        <div class="space-y-1.5">
+          <label for="email" class="block text-sm font-medium text-text-primary">メールアドレス</label>
+          <input type="email" id="email" name="email" required autocomplete="email"
+            class="w-full px-3 py-2 rounded border border-border bg-surface text-sm placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent" />
+        </div>
+        <div class="space-y-1.5">
+          <label for="password" class="block text-sm font-medium text-text-primary">パスワード</label>
+          <input type="password" id="password" name="password" required autocomplete="current-password"
+            class="w-full px-3 py-2 rounded border border-border bg-surface text-sm placeholder:text-text-muted focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent" />
+        </div>
+        <button type="submit"
+          class="w-full py-2 px-4 bg-accent text-white rounded text-sm font-medium hover:bg-accent/90 transition-colors">
+          ログイン
+        </button>
+      </form>
+    </div>
+  </div>
+</body>
+</html>

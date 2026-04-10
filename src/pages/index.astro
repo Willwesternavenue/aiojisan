@@ -1,0 +1,129 @@
+---
+import PublicLayout from '@/layouts/PublicLayout.astro';
+
+type WpPost = {
+  id: number;
+  slug: string;
+  title: { rendered: string };
+  excerpt: { rendered: string };
+  date: string;
+  link: string;
+};
+
+async function fetchWpPosts(perPage = 10): Promise<WpPost[]> {
+  const base = import.meta.env.WORDPRESS_BASE_URL?.replace(/\/$/, '') ?? '';
+  try {
+    const res = await fetch(`${base}/wp-json/wp/v2/posts?per_page=${perPage}&status=publish&_fields=id,slug,title,excerpt,date,link`);
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}
+
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, '').replace(/&[a-z]+;/gi, c =>
+    ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#039;': "'" })[c] ?? c
+  ).trim();
+}
+
+const wpPosts = await fetchWpPosts(10);
+
+const latestArticles = wpPosts.map(p => ({
+  slug: p.slug,
+  title: stripHtml(p.title.rendered),
+  excerpt: stripHtml(p.excerpt.rendered),
+  publishedAt: p.date,
+  category: 'AI分析',
+  link: p.link,
+}));
+
+const featuredArticles = latestArticles.slice(0, 4);
+---
+
+<PublicLayout title="AIおじさん.com">
+  <!-- Hero -->
+  <section class="max-w-admin mx-auto px-6 pt-16 pb-12">
+    <div class="max-w-2xl">
+      <p class="text-sm text-accent font-medium mb-3 uppercase tracking-wide">AIおじさん.com</p>
+      <h1 class="text-4xl font-semibold text-text-primary leading-tight mb-4">
+        生成AI・テクノロジーを<br />実務目線で読み解く
+      </h1>
+      <p class="text-lg text-text-secondary leading-relaxed">
+        AIニュースをただ伝えるのではなく、「なぜ重要か」「実務にどう響くか」を
+        自分なりの視点で書いています。
+      </p>
+    </div>
+  </section>
+
+  <!-- Divider -->
+  <div class="max-w-admin mx-auto px-6">
+    <hr class="border-border" />
+  </div>
+
+  <!-- Featured articles -->
+  {featuredArticles.length > 0 && (
+    <section class="max-w-admin mx-auto px-6 py-12">
+      <h2 class="text-xs font-medium text-text-muted uppercase tracking-widest mb-6">
+        注目の記事
+      </h2>
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        {featuredArticles.slice(0, 4).map(article => (
+          <a href={(article as any).link ?? `/articles/${article.slug}`}
+            target="_blank" rel="noopener noreferrer"
+            class="group border border-border rounded-lg p-5 hover:border-accent/40 transition-colors bg-surface">
+            <span class="text-xs text-accent font-medium uppercase tracking-wide">
+              {article.category}
+            </span>
+            <h3 class="text-base font-semibold text-text-primary mt-2 mb-2 leading-snug group-hover:text-accent transition-colors">
+              {article.title}
+            </h3>
+            <p class="text-sm text-text-secondary leading-relaxed line-clamp-3">
+              {article.excerpt}
+            </p>
+            <p class="text-xs text-text-muted mt-3">
+              {new Date(article.publishedAt).toLocaleDateString('ja-JP')}
+            </p>
+          </a>
+        ))}
+      </div>
+    </section>
+  )}
+
+  <!-- Latest articles -->
+  <section class="max-w-admin mx-auto px-6 py-10">
+    <div class="flex items-baseline justify-between mb-6">
+      <h2 class="text-xs font-medium text-text-muted uppercase tracking-widest">最新記事</h2>
+      <a href="/articles" class="text-sm text-accent hover:underline">すべて見る →</a>
+    </div>
+
+    {latestArticles.length === 0 ? (
+      <div class="py-16 text-center">
+        <p class="text-text-muted text-sm">記事を準備中です</p>
+      </div>
+    ) : (
+      <div class="space-y-0 divide-y divide-border">
+        {latestArticles.map(article => (
+          <a href={(article as any).link ?? `/articles/${article.slug}`}
+            target="_blank" rel="noopener noreferrer"
+            class="group flex items-start gap-4 py-5 hover:bg-[#F5F5F3] -mx-3 px-3 rounded transition-colors">
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 mb-1.5">
+                <span class="text-xs text-accent">{article.category}</span>
+                <span class="text-xs text-text-muted">
+                  {new Date(article.publishedAt).toLocaleDateString('ja-JP')}
+                </span>
+              </div>
+              <h3 class="text-base font-medium text-text-primary leading-snug group-hover:text-accent transition-colors mb-1.5">
+                {article.title}
+              </h3>
+              <p class="text-sm text-text-secondary leading-relaxed line-clamp-2">
+                {article.excerpt}
+              </p>
+            </div>
+          </a>
+        ))}
+      </div>
+    )}
+  </section>
+</PublicLayout>

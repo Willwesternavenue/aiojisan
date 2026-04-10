@@ -1,0 +1,140 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import { getArticlesFeed, getAllSources } from '@/lib/supabase/queries';
+
+const url = new URL(Astro.request.url);
+const page = parseInt(url.searchParams.get('page') ?? '1');
+const limit = 30;
+const offset = (page - 1) * limit;
+
+const sourceId = url.searchParams.get('source') ?? undefined;
+const sortBy = url.searchParams.get('sort') ?? 'newest';
+
+const [articlesRaw, sources] = await Promise.all([
+  getArticlesFeed({ limit, offset, sourceId }).catch(() => []),
+  getAllSources().catch(() => []),
+]);
+
+// Client-side sort after fetch (PostgREST can't sort on joined table columns)
+const articles = [...articlesRaw].sort((a, b) => {
+  const ai = (a as any).article_ai_insights as import('@/types').ArticleAiInsights | null;
+  const bi = (b as any).article_ai_insights as import('@/types').ArticleAiInsights | null;
+  if (sortBy === 'score') {
+    return (bi?.overall_score ?? -1) - (ai?.overall_score ?? -1);
+  } else if (sortBy === 'blog') {
+    return (bi?.blog_post_potential_score ?? -1) - (ai?.blog_post_potential_score ?? -1);
+  } else if (sortBy === 'x') {
+    return (bi?.x_post_potential_score ?? -1) - (ai?.x_post_potential_score ?? -1);
+  }
+  return 0; // newest: already sorted by DB
+});
+---
+
+<AdminLayout title="ニュースフィード" activeNav="feed">
+  <!-- Filters -->
+  <div class="flex items-center gap-3 mb-5 flex-wrap">
+    <form method="GET" class="flex items-center gap-3 flex-wrap">
+      <!-- Source filter -->
+      <select name="source" onchange="this.form.submit()" class="filter-select">
+        <option value="">全ソース</option>
+        {sources.map(s => (
+          <option value={s.id} selected={sourceId === s.id}>{s.name}</option>
+        ))}
+      </select>
+
+      <!-- Sort -->
+      <select name="sort" onchange="this.form.submit()" class="filter-select">
+        <option value="newest" selected={sortBy === 'newest'}>新着順</option>
+        <option value="score"  selected={sortBy === 'score'}>スコア順</option>
+        <option value="blog"   selected={sortBy === 'blog'}>ブログ適性順</option>
+        <option value="x"      selected={sortBy === 'x'}>X適性順</option>
+      </select>
+    </form>
+
+    <p class="text-xs text-text-muted ml-auto">{articles.length} 件表示中</p>
+  </div>
+
+  <!-- Article list -->
+  <div class="space-y-2">
+    {articles.length === 0 && (
+      <div class="bg-surface border border-border rounded-md px-5 py-8 text-center">
+        <p class="text-sm text-text-muted">記事がありません</p>
+      </div>
+    )}
+    {articles.map(article => {
+      const anyArticle = article as any;
+      const insights = anyArticle.article_ai_insights as import('@/types').ArticleAiInsights | null;
+      const score = insights?.overall_score;
+      const actions = (anyArticle.article_actions ?? []).map((a: { action_type: string }) => a.action_type) as string[];
+      const isFavorite = actions.includes('favorite');
+      const isExcluded = actions.includes('exclude');
+      const isDrafted = actions.includes('generate_blog_draft');
+
+      return (
+        <a href={`/admin/feed/${article.id}`}
+          class:list={[
+            'block bg-surface border rounded-md px-5 py-4 hover:border-accent/40 transition-colors group',
+            isExcluded ? 'border-border opacity-50' : 'border-border',
+          ]}
+        >
+          <div class="flex items-start justify-between gap-4">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="text-xs text-text-muted">{(article as any).sources?.name}</span>
+                {article.published_at && (
+                  <span class="text-xs text-text-muted">
+                    · {new Date(article.published_at).toLocaleDateString('ja-JP')}
+                  </span>
+                )}
+                {isFavorite && <span class="text-xs text-accent">★ お気に入り</span>}
+                {isDrafted && <span class="badge-blue">下書き済</span>}
+              </div>
+              <p class="text-sm font-medium text-text-primary leading-snug group-hover:text-accent transition-colors line-clamp-2">
+                {article.title}
+              </p>
+              {insights?.short_summary && (
+                <p class="text-xs text-text-secondary mt-1 line-clamp-2">{insights.short_summary}</p>
+              )}
+            </div>
+
+            <!-- Score badges -->
+            {insights && (
+              <div class="flex flex-col items-end gap-1 flex-shrink-0">
+                {score != null && (
+                  <span class:list={[
+                    'score-badge',
+                    score >= 7 ? 'score-high' : score >= 5 ? 'score-mid' : 'score-low',
+                  ]}>
+                    {score.toFixed(1)}
+                  </span>
+                )}
+                <div class="flex gap-1">
+                  {insights.blog_post_potential_score != null && (
+                    <span class="mini-badge" title="ブログ適性">
+                      B {insights.blog_post_potential_score.toFixed(0)}
+                    </span>
+                  )}
+                  {insights.x_post_potential_score != null && (
+                    <span class="mini-badge" title="X適性">
+                      X {insights.x_post_potential_score.toFixed(0)}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </a>
+      );
+    })}
+  </div>
+
+  <!-- Pagination -->
+  {articles.length === limit && (
+    <div class="mt-6 flex justify-center">
+      <a href={`?page=${page + 1}${sourceId ? `&source=${sourceId}` : ''}&sort=${sortBy}`}
+        class="btn-secondary text-sm">
+        次のページ →
+      </a>
+    </div>
+  )}
+</AdminLayout>

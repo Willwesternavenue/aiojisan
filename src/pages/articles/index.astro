@@ -1,0 +1,62 @@
+---
+import PublicLayout from '@/layouts/PublicLayout.astro';
+
+// TODO: Fetch from WordPress REST API or Supabase
+const articles: {
+  slug: string;
+  title: string;
+  excerpt: string;
+  publishedAt: string;
+  category: string;
+}[] = [];
+
+const categories: string[] = [];
+---
+
+<PublicLayout title="記事一覧" description="AIおじさん.comの記事一覧">
+  <div class="max-w-admin mx-auto px-6 py-12">
+    <div class="flex items-baseline justify-between mb-8">
+      <h1 class="text-2xl font-semibold text-text-primary">記事一覧</h1>
+      <p class="text-sm text-text-muted">{articles.length} 件</p>
+    </div>
+
+    <!-- Category filter -->
+    {categories.length > 0 && (
+      <div class="flex flex-wrap gap-2 mb-8">
+        <a href="/articles" class="category-pill category-pill-active">すべて</a>
+        {categories.map(cat => (
+          <a href={`/articles?category=${encodeURIComponent(cat)}`} class="category-pill">
+            {cat}
+          </a>
+        ))}
+      </div>
+    )}
+
+    <!-- Article list -->
+    {articles.length === 0 ? (
+      <div class="py-20 text-center">
+        <p class="text-text-muted">記事を準備中です</p>
+      </div>
+    ) : (
+      <div class="space-y-0 divide-y divide-border">
+        {articles.map(article => (
+          <a href={`/articles/${article.slug}`}
+            class="group block py-6 hover:bg-[#F5F5F3] -mx-3 px-3 rounded transition-colors">
+            <div class="flex items-center gap-2 mb-2">
+              <span class="text-xs text-accent font-medium">{article.category}</span>
+              <span class="text-xs text-text-muted">
+                {new Date(article.publishedAt).toLocaleDateString('ja-JP')}
+              </span>
+            </div>
+            <h2 class="text-lg font-semibold text-text-primary mb-2 leading-snug group-hover:text-accent transition-colors">
+              {article.title}
+            </h2>
+            <p class="text-sm text-text-secondary leading-relaxed line-clamp-3">
+              {article.excerpt}
+            </p>
+          </a>
+        ))}
+      </div>
+    )}
+  </div>
+</PublicLayout>
