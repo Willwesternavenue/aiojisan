@@ -5,8 +5,11 @@ import type { APIRoute } from 'astro';
 import { requireCronAuth } from '@/lib/auth';
 import { getAdminClient } from '@/lib/supabase/server';
 import { getAiProvider } from '@/services/ai';
+import { generateDraftForArticle } from '@/services/drafts/generate';
 import { createLogger } from '@/lib/logger';
 import type { Article } from '@/types/database';
+
+const AUTO_DRAFT_THRESHOLD = 7.9;
 
 const logger = createLogger('cron:process-articles');
 const BATCH_SIZE = 20;
@@ -91,6 +94,19 @@ export const POST: APIRoute = async ({ request }) => {
         failed++;
       } else {
         processed++;
+
+        // Auto-draft if score >= threshold
+        if (scores.overallScore >= AUTO_DRAFT_THRESHOLD) {
+          logger.info('Score threshold met, auto-drafting', {
+            articleId: article.id,
+            score: scores.overallScore,
+          });
+          try {
+            await generateDraftForArticle(article.id);
+          } catch (draftErr) {
+            logger.warn('Auto-draft failed', { articleId: article.id, err: String(draftErr) });
+          }
+        }
       }
 
       // Rate limit buffer
