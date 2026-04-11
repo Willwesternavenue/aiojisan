@@ -1,49 +1,155 @@
 ---
 import PublicLayout from '@/layouts/PublicLayout.astro';
 
-// TODO: Fetch from WordPress REST API or Supabase
-const articles: {
+type WpCategory = {
+  id: number;
+  name: string;
   slug: string;
-  title: string;
-  excerpt: string;
-  publishedAt: string;
-  category: string;
-}[] = [];
+  count: number;
+};
 
-const categories: string[] = [];
+type WpPost = {
+  id: number;
+  slug: string;
+  title: { rendered: string };
+  excerpt: { rendered: string };
+  date: string;
+  link: string;
+  categories: number[];
+};
+
+const base = import.meta.env.WORDPRESS_BASE_URL?.replace(/\/$/, '') ?? '';
+
+async function fetchCategories(): Promise<WpCategory[]> {
+  try {
+    const res = await fetch(`${base}/wp-json/wp/v2/categories?per_page=100&hide_empty=true&_fields=id,name,slug,count`);
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}
+
+async function fetchPosts(categoryId?: number): Promise<WpPost[]> {
+  try {
+    const params = new URLSearchParams({
+      per_page: '100',
+      status: 'publish',
+      _fields: 'id,slug,title,excerpt,date,link,categories',
+      orderby: 'date',
+      order: 'desc',
+    });
+    if (categoryId) params.set('categories', String(categoryId));
+    const res = await fetch(`${base}/wp-json/wp/v2/posts?${params}`);
+    if (!res.ok) return [];
+    return res.json();
+  } catch {
+    return [];
+  }
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+}
+
+const selectedSlug = Astro.url.searchParams.get('category') ?? '';
+
+const [allCategories, rawPosts] = await Promise.all([
+  fetchCategories(),
+  fetchPosts(undefined),
+]);
+
+// カテゴリIDでのルックアップマップ
+const categoryMap = new Map(allCategories.map(c => [c.id, c]));
+
+// 記事にカテゴリ情報を付与
+const articles = rawPosts.map(p => ({
+  slug: p.slug,
+  title: stripHtml(p.title.rendered),
+  excerpt: stripHtml(p.excerpt.rendered),
+  publishedAt: p.date,
+  link: p.link,
+  categoryIds: p.categories,
+  // 最初のカテゴリ名を表示用に使用
+  categoryName: p.categories.length > 0
+    ? (categoryMap.get(p.categories[0])?.name ?? 'その他')
+    : 'その他',
+  categorySlug: p.categories.length > 0
+    ? (categoryMap.get(p.categories[0])?.slug ?? '')
+    : '',
+}));
+
+// カテゴリフィルター: 記事のあるカテゴリだけ表示
+const usedCategoryIds = new Set(rawPosts.flatMap(p => p.categories));
+const categories = allCategories.filter(c => usedCategoryIds.has(c.id));
+
+// フィルター適用
+const filtered = selectedSlug
+  ? articles.filter(a => a.categorySlug === selectedSlug)
+  : articles;
+
+const selectedCategory = categories.find(c => c.slug === selectedSlug);
 ---
 
-<PublicLayout title="記事一覧" description="AIおじさん.comの記事一覧">
+<PublicLayout
+  title={selectedCategory ? `${selectedCategory.name} の記事` : '記事一覧'}
+  description="AIおじさん.comの記事一覧"
+>
   <div class="max-w-admin mx-auto px-6 py-12">
     <div class="flex items-baseline justify-between mb-8">
-      <h1 class="text-2xl font-semibold text-text-primary">記事一覧</h1>
-      <p class="text-sm text-text-muted">{articles.length} 件</p>
+      <h1 class="text-2xl font-semibold text-text-primary">
+        {selectedCategory ? selectedCategory.name : '記事一覧'}
+      </h1>
+      <p class="text-sm text-text-muted">{filtered.length} 件</p>
     </div>
 
-    <!-- Category filter -->
+    <!-- カテゴリフィルター -->
     {categories.length > 0 && (
-      <div class="flex flex-wrap gap-2 mb-8">
-        <a href="/articles" class="category-pill category-pill-active">すべて</a>
+      <div class="flex flex-wrap gap-2 mb-10">
+        <a
+          href="/articles"
+          class={`category-pill ${!selectedSlug ? 'category-pill-active' : ''}`}
+        >
+          すべて
+          <span class="ml-1 text-xs opacity-60">({articles.length})</span>
+        </a>
         {categories.map(cat => (
-          <a href={`/articles?category=${encodeURIComponent(cat)}`} class="category-pill">
-            {cat}
+          <a
+            href={`/articles?category=${encodeURIComponent(cat.slug)}`}
+            class={`category-pill ${selectedSlug === cat.slug ? 'category-pill-active' : ''}`}
+          >
+            {cat.name}
+            <span class="ml-1 text-xs opacity-60">({cat.count})</span>
           </a>
         ))}
       </div>
     )}
 
-    <!-- Article list -->
-    {articles.length === 0 ? (
+    <!-- 記事リスト -->
+    {filtered.length === 0 ? (
       <div class="py-20 text-center">
         <p class="text-text-muted">記事を準備中です</p>
       </div>
-    ) : (
+    ) : selectedSlug ? (
+      <!-- カテゴリ選択時: シンプルリスト -->
       <div class="space-y-0 divide-y divide-border">
-        {articles.map(article => (
-          <a href={`/articles/${article.slug}`}
-            class="group block py-6 hover:bg-[#F5F5F3] -mx-3 px-3 rounded transition-colors">
+        {filtered.map(article => (
+          <a
+            href={article.link}
+            target="_blank"
+            rel="noopener noreferrer"
+            class="group block py-6 hover:bg-[#F5F5F3] -mx-3 px-3 rounded transition-colors"
+          >
             <div class="flex items-center gap-2 mb-2">
-              <span class="text-xs text-accent font-medium">{article.category}</span>
+              <span class="text-xs text-accent font-medium">{article.categoryName}</span>
               <span class="text-xs text-text-muted">
                 {new Date(article.publishedAt).toLocaleDateString('ja-JP')}
               </span>
@@ -56,6 +162,53 @@ const categories: string[] = [];
             </p>
           </a>
         ))}
+      </div>
+    ) : (
+      <!-- 全表示時: カテゴリ別グループ -->
+      <div class="space-y-12">
+        {categories.map(cat => {
+          const catArticles = articles.filter(a => a.categorySlug === cat.slug);
+          if (catArticles.length === 0) return null;
+          return (
+            <section>
+              <div class="flex items-baseline justify-between mb-4 pb-3 border-b border-border">
+                <h2 class="text-base font-semibold text-text-primary">{cat.name}</h2>
+                {catArticles.length > 5 && (
+                  <a
+                    href={`/articles?category=${encodeURIComponent(cat.slug)}`}
+                    class="text-xs text-accent hover:underline"
+                  >
+                    もっと見る ({catArticles.length}件) →
+                  </a>
+                )}
+              </div>
+              <div class="space-y-0 divide-y divide-border">
+                {catArticles.slice(0, 5).map(article => (
+                  <a
+                    href={article.link}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="group flex items-start gap-4 py-5 hover:bg-[#F5F5F3] -mx-3 px-3 rounded transition-colors"
+                  >
+                    <div class="flex-1 min-w-0">
+                      <div class="flex items-center gap-2 mb-1.5">
+                        <span class="text-xs text-text-muted">
+                          {new Date(article.publishedAt).toLocaleDateString('ja-JP')}
+                        </span>
+                      </div>
+                      <h3 class="text-base font-medium text-text-primary leading-snug group-hover:text-accent transition-colors mb-1.5">
+                        {article.title}
+                      </h3>
+                      <p class="text-sm text-text-secondary leading-relaxed line-clamp-2">
+                        {article.excerpt}
+                      </p>
+                    </div>
+                  </a>
+                ))}
+              </div>
+            </section>
+          );
+        })}
       </div>
     )}
   </div>
