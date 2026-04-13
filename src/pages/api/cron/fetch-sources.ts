@@ -8,7 +8,15 @@ import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('cron:fetch-sources');
 
+export const GET: APIRoute = async ({ request }) => {
+  return handler(request);
+};
+
 export const POST: APIRoute = async ({ request }) => {
+  return handler(request);
+};
+
+async function handler(request: Request): Promise<Response> {
   const authError = requireCronAuth(request);
   if (authError) return authError;
 

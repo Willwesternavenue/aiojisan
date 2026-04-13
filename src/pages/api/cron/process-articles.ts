@@ -14,7 +14,15 @@ const AUTO_DRAFT_THRESHOLD = 7.9;
 const logger = createLogger('cron:process-articles');
 const BATCH_SIZE = 20;
 
+export const GET: APIRoute = async ({ request }) => {
+  return handler(request);
+};
+
 export const POST: APIRoute = async ({ request }) => {
+  return handler(request);
+};
+
+async function handler(request: Request): Promise<Response> {
   const authError = requireCronAuth(request);
   if (authError) return authError;
 

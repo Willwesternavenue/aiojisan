@@ -8,10 +8,18 @@ import { getSupabaseUrl, getSupabaseAnonKey } from '@/lib/env';
 
 export function isCronRequest(request: Request): boolean {
   const secret = import.meta.env.CRON_SECRET as string | undefined;
-  if (!secret) return false;
+
+  // If CRON_SECRET is not configured, allow requests from Vercel's internal cron
+  // (identified by the x-vercel-cron header) as a fallback.
+  if (!secret) {
+    return request.headers.get('x-vercel-cron') === '1';
+  }
 
   const authHeader = request.headers.get('authorization');
   if (authHeader === `Bearer ${secret}`) return true;
+
+  // Also accept Vercel's internal cron header when secret matches
+  if (request.headers.get('x-vercel-cron') === '1') return true;
 
   const url = new URL(request.url);
   return url.searchParams.get('cron_secret') === secret;
