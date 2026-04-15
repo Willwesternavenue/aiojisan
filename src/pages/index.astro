@@ -8,12 +8,19 @@ type WpPost = {
   excerpt: { rendered: string };
   date: string;
   link: string;
+  featured_media: number;
+  _embedded?: {
+    'wp:featuredmedia'?: { source_url: string; alt_text: string }[];
+    'wp:term'?: { id: number; name: string; slug: string }[][];
+  };
 };
 
 async function fetchWpPosts(perPage = 10): Promise<WpPost[]> {
   const base = import.meta.env.WORDPRESS_BASE_URL?.replace(/\/$/, '') ?? '';
   try {
-    const res = await fetch(`${base}/wp-json/wp/v2/posts?per_page=${perPage}&status=publish&_fields=id,slug,title,excerpt,date,link`);
+    const res = await fetch(
+      `${base}/wp-json/wp/v2/posts?per_page=${perPage}&status=publish&_embed=1`
+    );
     if (!res.ok) return [];
     return res.json();
   } catch {
@@ -34,14 +41,15 @@ const latestArticles = wpPosts.map(p => ({
   title: stripHtml(p.title.rendered),
   excerpt: stripHtml(p.excerpt.rendered),
   publishedAt: p.date,
-  category: 'AI分析',
   link: p.link,
+  thumbnail: p._embedded?.['wp:featuredmedia']?.[0]?.source_url ?? null,
+  category: p._embedded?.['wp:term']?.[0]?.[0]?.name ?? 'AI分析',
 }));
 
 const featuredArticles = latestArticles.slice(0, 4);
 ---
 
-<PublicLayout title="AIおじさん.com">
+<PublicLayout title="AIおじさん">
   <!-- Hero -->
   <section class="max-w-admin mx-auto px-6 pt-16 pb-12">
     <div class="max-w-2xl">
@@ -68,22 +76,34 @@ const featuredArticles = latestArticles.slice(0, 4);
         注目の記事
       </h2>
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {featuredArticles.slice(0, 4).map(article => (
-          <a href={(article as any).link ?? `/articles/${article.slug}`}
+        {featuredArticles.map(article => (
+          <a href={article.link}
             target="_blank" rel="noopener noreferrer"
-            class="group border border-border rounded-lg p-5 hover:border-accent/40 transition-colors bg-surface">
-            <span class="text-xs text-accent font-medium uppercase tracking-wide">
-              {article.category}
-            </span>
-            <h3 class="text-base font-semibold text-text-primary mt-2 mb-2 leading-snug group-hover:text-accent transition-colors">
-              {article.title}
-            </h3>
-            <p class="text-sm text-text-secondary leading-relaxed line-clamp-3">
-              {article.excerpt}
-            </p>
-            <p class="text-xs text-text-muted mt-3">
-              {new Date(article.publishedAt).toLocaleDateString('ja-JP')}
-            </p>
+            class="group border border-border rounded-lg overflow-hidden hover:border-accent/40 transition-colors bg-surface">
+            {article.thumbnail && (
+              <div class="aspect-video overflow-hidden bg-[#F0F0EE]">
+                <img
+                  src={article.thumbnail}
+                  alt={article.title}
+                  class="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+                  loading="lazy"
+                />
+              </div>
+            )}
+            <div class="p-5">
+              <span class="text-xs text-accent font-medium uppercase tracking-wide">
+                {article.category}
+              </span>
+              <h3 class="text-base font-semibold text-text-primary mt-2 mb-2 leading-snug group-hover:text-accent transition-colors">
+                {article.title}
+              </h3>
+              <p class="text-sm text-text-secondary leading-relaxed line-clamp-3">
+                {article.excerpt}
+              </p>
+              <p class="text-xs text-text-muted mt-3">
+                {new Date(article.publishedAt).toLocaleDateString('ja-JP')}
+              </p>
+            </div>
           </a>
         ))}
       </div>
@@ -104,9 +124,19 @@ const featuredArticles = latestArticles.slice(0, 4);
     ) : (
       <div class="space-y-0 divide-y divide-border">
         {latestArticles.map(article => (
-          <a href={(article as any).link ?? `/articles/${article.slug}`}
+          <a href={article.link}
             target="_blank" rel="noopener noreferrer"
             class="group flex items-start gap-4 py-5 hover:bg-[#F5F5F3] -mx-3 px-3 rounded transition-colors">
+            {article.thumbnail && (
+              <div class="w-20 h-14 flex-shrink-0 rounded overflow-hidden bg-[#F0F0EE]">
+                <img
+                  src={article.thumbnail}
+                  alt={article.title}
+                  class="w-full h-full object-cover"
+                  loading="lazy"
+                />
+              </div>
+            )}
             <div class="flex-1 min-w-0">
               <div class="flex items-center gap-2 mb-1.5">
                 <span class="text-xs text-accent">{article.category}</span>

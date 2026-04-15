@@ -11,10 +11,12 @@
   "dependencies": {
     "@astrojs/node": "^10.0.4",
     "@astrojs/vercel": "^10.0.4",
+    "@rolldown/binding-darwin-x64": "^1.0.0-rc.15",
     "@supabase/supabase-js": "^2.47.0",
     "@tailwindcss/vite": "^4.2.2",
     "astro": "^6.1.5",
     "iconv-lite": "^0.7.2",
+    "marked": "^18.0.0",
     "node-html-parser": "^6.1.13",
     "openai": "^4.77.0",
     "rss-parser": "^3.13.0",

@@ -1,8 +1,17 @@
 // WordPress REST API client
 // Uses Application Password auth — server-only
 
+import { marked } from 'marked';
 import { getEnv } from '@/lib/env';
 import { createLogger } from '@/lib/logger';
+
+// Convert markdown to WordPress-friendly HTML
+function markdownToHtml(markdown: string): string {
+  // Configure marked for WordPress compatibility
+  marked.setOptions({ breaks: true });
+  const html = marked.parse(markdown) as string;
+  return html;
+}
 
 const logger = createLogger('wordpress');
 
@@ -65,9 +74,11 @@ export async function createWordPressDraft(
 ): Promise<{ id: number; editUrl: string }> {
   logger.info('Creating WordPress draft', { title });
 
+  const htmlBody = markdownToHtml(body);
+
   const payload: WpPostPayload = {
     title,
-    content: body,
+    content: htmlBody,
     status: 'draft',
     excerpt,
   };

@@ -16,6 +16,9 @@ type WpPost = {
   date: string;
   link: string;
   categories: number[];
+  _embedded?: {
+    'wp:featuredmedia'?: { source_url: string }[];
+  };
 };
 
 const base = import.meta.env.WORDPRESS_BASE_URL?.replace(/\/$/, '') ?? '';
@@ -35,7 +38,7 @@ async function fetchPosts(categoryId?: number): Promise<WpPost[]> {
     const params = new URLSearchParams({
       per_page: '100',
       status: 'publish',
-      _fields: 'id,slug,title,excerpt,date,link,categories',
+      _embed: '1',
       orderby: 'date',
       order: 'desc',
     });
@@ -77,8 +80,8 @@ const articles = rawPosts.map(p => ({
   excerpt: stripHtml(p.excerpt.rendered),
   publishedAt: p.date,
   link: p.link,
+  thumbnail: p._embedded?.['wp:featuredmedia']?.[0]?.source_url ?? null,
   categoryIds: p.categories,
-  // 最初のカテゴリ名を表示用に使用
   categoryName: p.categories.length > 0
     ? (categoryMap.get(p.categories[0])?.name ?? 'その他')
     : 'その他',
@@ -139,27 +142,34 @@ const selectedCategory = categories.find(c => c.slug === selectedSlug);
         <p class="text-text-muted">記事を準備中です</p>
       </div>
     ) : selectedSlug ? (
-      <!-- カテゴリ選択時: シンプルリスト -->
+      <!-- カテゴリ選択時: サムネイル付きリスト -->
       <div class="space-y-0 divide-y divide-border">
         {filtered.map(article => (
           <a
             href={article.link}
             target="_blank"
             rel="noopener noreferrer"
-            class="group block py-6 hover:bg-[#F5F5F3] -mx-3 px-3 rounded transition-colors"
+            class="group flex items-start gap-4 py-5 hover:bg-[#F5F5F3] -mx-3 px-3 rounded transition-colors"
           >
-            <div class="flex items-center gap-2 mb-2">
-              <span class="text-xs text-accent font-medium">{article.categoryName}</span>
-              <span class="text-xs text-text-muted">
-                {new Date(article.publishedAt).toLocaleDateString('ja-JP')}
-              </span>
+            {article.thumbnail && (
+              <div class="w-24 h-16 flex-shrink-0 rounded overflow-hidden bg-[#F0F0EE]">
+                <img src={article.thumbnail} alt={article.title} class="w-full h-full object-cover" loading="lazy" />
+              </div>
+            )}
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 mb-1.5">
+                <span class="text-xs text-accent font-medium">{article.categoryName}</span>
+                <span class="text-xs text-text-muted">
+                  {new Date(article.publishedAt).toLocaleDateString('ja-JP')}
+                </span>
+              </div>
+              <h2 class="text-base font-semibold text-text-primary mb-1.5 leading-snug group-hover:text-accent transition-colors">
+                {article.title}
+              </h2>
+              <p class="text-sm text-text-secondary leading-relaxed line-clamp-2">
+                {article.excerpt}
+              </p>
             </div>
-            <h2 class="text-lg font-semibold text-text-primary mb-2 leading-snug group-hover:text-accent transition-colors">
-              {article.title}
-            </h2>
-            <p class="text-sm text-text-secondary leading-relaxed line-clamp-3">
-              {article.excerpt}
-            </p>
           </a>
         ))}
       </div>
@@ -190,6 +200,11 @@ const selectedCategory = categories.find(c => c.slug === selectedSlug);
                     rel="noopener noreferrer"
                     class="group flex items-start gap-4 py-5 hover:bg-[#F5F5F3] -mx-3 px-3 rounded transition-colors"
                   >
+                    {article.thumbnail && (
+                      <div class="w-24 h-16 flex-shrink-0 rounded overflow-hidden bg-[#F0F0EE]">
+                        <img src={article.thumbnail} alt={article.title} class="w-full h-full object-cover" loading="lazy" />
+                      </div>
+                    )}
                     <div class="flex-1 min-w-0">
                       <div class="flex items-center gap-2 mb-1.5">
                         <span class="text-xs text-text-muted">
