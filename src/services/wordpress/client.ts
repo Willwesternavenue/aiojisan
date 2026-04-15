@@ -71,8 +71,9 @@ export async function createWordPressDraft(
   title: string,
   body: string,
   excerpt?: string,
+  slug?: string,
 ): Promise<{ id: number; editUrl: string }> {
-  logger.info('Creating WordPress draft', { title });
+  logger.info('Creating WordPress draft', { title, slug });
 
   const htmlBody = markdownToHtml(body);
 
@@ -81,6 +82,7 @@ export async function createWordPressDraft(
     content: htmlBody,
     status: 'draft',
     excerpt,
+    ...(slug ? { slug } : {}),
   };
 
   const post = await wpFetch<WpPostResponse>('/posts', {

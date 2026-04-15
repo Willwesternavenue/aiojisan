@@ -37,6 +37,7 @@ export interface BlogDraftInput {
 
 export interface BlogDraftOutput {
   titleOptions: [string, string, string];
+  slug: string;
   outline: string;
   body: string;
 }

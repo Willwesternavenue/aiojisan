@@ -60,6 +60,7 @@ export async function generateDraftForArticle(articleId: string): Promise<{ wpPo
     selectedTitle,
     draft.body,
     insights?.short_summary ?? undefined,
+    draft.slug,
   );
 
   await db.from('generated_drafts').insert({

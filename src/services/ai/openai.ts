@@ -139,12 +139,22 @@ export const openAiProvider: AiProvider = {
     logger.info('Generating blog draft', { title: input.articleTitle });
     const raw = await callJson<{
       titleOptions: [string, string, string];
+      slug: string;
       outline: string;
       body: string;
     }>(client, DRAFT_MODEL, prompt, 'generateBlogDraft');
 
+    // Sanitize slug: lowercase, hyphens only, no Japanese
+    const slug = (raw.slug ?? '')
+      .toLowerCase()
+      .replace(/[^a-z0-9-]/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+      || 'ai-article';
+
     return {
       titleOptions: raw.titleOptions,
+      slug,
       outline: raw.outline,
       body: raw.body,
     };
