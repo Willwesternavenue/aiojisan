@@ -15,6 +15,9 @@ function markdownToHtml(markdown: string): string {
 
 const logger = createLogger('wordpress');
 
+// Placeholder featured image used until a real image is generated
+const PLACEHOLDER_MEDIA_ID = 125;
+
 interface WpPostPayload {
   title: string;
   content: string;
@@ -22,6 +25,7 @@ interface WpPostPayload {
   excerpt?: string;
   categories?: number[];
   tags?: number[];
+  featured_media?: number;
   meta?: Record<string, unknown>;
 }
 
@@ -82,6 +86,7 @@ export async function createWordPressDraft(
     content: htmlBody,
     status: 'draft',
     excerpt,
+    featured_media: PLACEHOLDER_MEDIA_ID,
     ...(slug ? { slug } : {}),
   };
 
