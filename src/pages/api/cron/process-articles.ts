@@ -7,7 +7,6 @@ import { getAdminClient } from '@/lib/supabase/server';
 import { getAiProvider } from '@/services/ai';
 import { generateDraftForArticle } from '@/services/drafts/generate';
 import { createLogger } from '@/lib/logger';
-import type { Article } from '@/types/database';
 
 const AUTO_DRAFT_THRESHOLD = 7.9;
 
@@ -31,34 +30,33 @@ async function handler(request: Request): Promise<Response> {
   const db = getAdminClient();
   const ai = getAiProvider();
 
-  // Fetch IDs that already have insights
-  const { data: insightRows } = await db
-    .from('article_ai_insights')
-    .select('article_id');
-  const processedIds = (insightRows ?? []).map((r: { article_id: string }) => r.article_id);
-
-  // Fetch articles that have no AI insights yet
-  let articlesQuery = db
+  // LEFT JOINで未処理記事を取得（NOT IN方式はID数が多いとURL長制限に引っかかるため）
+  const { data: candidates, error } = await db
     .from('articles')
-    .select('id, title, canonical_url, extracted_text, published_at, sources(name)')
+    .select('id, title, canonical_url, extracted_text, published_at, sources(name), article_ai_insights(article_id)')
     .order('fetched_at', { ascending: false })
-    .limit(BATCH_SIZE);
-
-  if (processedIds.length > 0) {
-    articlesQuery = articlesQuery.not('id', 'in', `(${processedIds.join(',')})`);
-  }
-
-  const { data: articles, error } = await articlesQuery;
+    .limit(BATCH_SIZE * 10); // 多めに取得してクライアント側でフィルタ
 
   if (error) {
-    logger.error('Failed to fetch unprocessed articles', { error: error.message });
-    return new Response(JSON.stringify({ ok: false, error: error.message }), { status: 500 });
+    logger.error('Failed to fetch article candidates', { error: error.message });
+    return new Response(JSON.stringify({ ok: false, error: error.message }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    });
   }
+
+  // insightsがない記事だけ抽出してバッチサイズに絞る
+  const articles = (candidates ?? [])
+    .filter((a: any) => {
+      const ins = a.article_ai_insights;
+      return !ins || (Array.isArray(ins) && ins.length === 0) || ins === null;
+    })
+    .slice(0, BATCH_SIZE);
 
   let processed = 0;
   let failed = 0;
 
-  for (const article of (articles ?? [])) {
+  for (const article of articles) {
     try {
       const sourceName = (article.sources as unknown as { name: string } | null)?.name ?? 'Unknown';
 

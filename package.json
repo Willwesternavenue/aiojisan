@@ -26,5 +26,9 @@
     "@astrojs/check": "^0.9.8",
     "@types/node": "^22.0.0",
     "typescript": "^5.7.0"
+  },
+  "optionalDependencies": {
+    "@rolldown/binding-darwin-arm64": "^1.0.0-rc.15",
+    "@rolldown/binding-darwin-x64": "^1.0.0-rc.15"
   }
 }

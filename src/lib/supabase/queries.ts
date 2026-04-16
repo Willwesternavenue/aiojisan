@@ -57,6 +57,20 @@ export async function getUnprocessedArticles(limit = 50) {
   return data;
 }
 
+const ARTICLE_FEED_SELECT_LEFT = `
+  *,
+  sources(name, source_type),
+  article_ai_insights(*),
+  article_actions(action_type)
+`;
+
+const ARTICLE_FEED_SELECT_INNER = `
+  *,
+  sources(name, source_type),
+  article_ai_insights!inner(*),
+  article_actions(action_type)
+`;
+
 export async function getArticlesFeed(options: {
   limit?: number;
   offset?: number;
@@ -70,26 +84,92 @@ export async function getArticlesFeed(options: {
   const db = getAdminClient();
   const { limit = 50, offset = 0, sortBy = 'newest' } = options;
 
-  let query = db
-    .from('articles')
-    .select(`
-      *,
-      sources(name, source_type),
-      article_ai_insights(*),
-      article_actions(action_type)
-    `)
-    .range(offset, offset + limit - 1);
+  // 新着順: 従来どおり fetched_at
+  if (sortBy === 'newest') {
+    let query = db
+      .from('articles')
+      .select(ARTICLE_FEED_SELECT_LEFT)
+      .order('fetched_at', { ascending: false })
+      .range(offset, offset + limit - 1);
 
-  // Always order by fetched_at as base; score-based sorting done client-side after fetch
-  query = query.order('fetched_at', { ascending: false });
+    if (options.sourceId) {
+      query = query.eq('source_id', options.sourceId);
+    }
 
-  if (options.sourceId) {
-    query = query.eq('source_id', options.sourceId);
+    const { data, error } = await query;
+    if (error) throw new Error(`getArticlesFeed: ${error.message}`);
+    return data as ArticleWithInsights[];
   }
 
-  const { data, error } = await query;
-  if (error) throw new Error(`getArticlesFeed: ${error.message}`);
-  return data as ArticleWithInsights[];
+  // スコア系: DB 上で「insights あり」を先頭（スコア降順）、その後「未処理」を新着順。
+  // 直近 N 件だけ取ってクライアントソートすると、未処理ばかりでスコアが全部空に見えるのを防ぐ。
+  const scoreColumn =
+    sortBy === 'score'
+      ? 'overall_score'
+      : sortBy === 'blog'
+        ? 'blog_post_potential_score'
+        : 'x_post_potential_score';
+
+  let countQuery = db
+    .from('articles')
+    .select('id, article_ai_insights!inner(article_id)', { count: 'exact', head: true });
+  if (options.sourceId) {
+    countQuery = countQuery.eq('source_id', options.sourceId);
+  }
+  const { count: processedTotal, error: countError } = await countQuery;
+  if (countError) throw new Error(`getArticlesFeed: ${countError.message}`);
+  const processedCount = processedTotal ?? 0;
+
+  const fetchProcessedRange = async (from: number, to: number) => {
+    if (from > to) return [] as ArticleWithInsights[];
+    let q = db
+      .from('articles')
+      .select(ARTICLE_FEED_SELECT_INNER)
+      .order(scoreColumn, { ascending: false, foreignTable: 'article_ai_insights' })
+      .order('fetched_at', { ascending: false })
+      .range(from, to);
+    if (options.sourceId) {
+      q = q.eq('source_id', options.sourceId);
+    }
+    const { data, error } = await q;
+    if (error) throw new Error(`getArticlesFeed: ${error.message}`);
+    return (data ?? []) as ArticleWithInsights[];
+  };
+
+  const fetchUnprocessedRange = async (from: number, to: number) => {
+    if (from > to) return [] as ArticleWithInsights[];
+    let q = db
+      .from('articles')
+      .select(ARTICLE_FEED_SELECT_LEFT)
+      .is('article_ai_insights', null)
+      .order('fetched_at', { ascending: false })
+      .range(from, to);
+    if (options.sourceId) {
+      q = q.eq('source_id', options.sourceId);
+    }
+    const { data, error } = await q;
+    if (error) throw new Error(`getArticlesFeed: ${error.message}`);
+    return (data ?? []) as ArticleWithInsights[];
+  };
+
+  const end = offset + limit - 1;
+
+  if (end < processedCount) {
+    return fetchProcessedRange(offset, end);
+  }
+
+  if (offset >= processedCount) {
+    return fetchUnprocessedRange(offset - processedCount, end - processedCount);
+  }
+
+  const fromProcessed = offset;
+  const toProcessed = processedCount - 1;
+  const processedRows = await fetchProcessedRange(fromProcessed, toProcessed);
+  const need = limit - processedRows.length;
+  const unprocessedRows =
+    need > 0 ? await fetchUnprocessedRange(0, need - 1) : [];
+
+  return [...processedRows, ...unprocessedRows];
 }
 
 export async function getArticleById(id: string) {
