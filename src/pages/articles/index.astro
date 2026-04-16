@@ -141,8 +141,7 @@ const selectedCategory = categories.find(c => c.slug === selectedSlug);
       <div class="py-20 text-center">
         <p class="text-text-muted">記事を準備中です</p>
       </div>
-    ) : selectedSlug ? (
-      <!-- カテゴリ選択時: サムネイル付きリスト -->
+    ) : (
       <div class="space-y-0 divide-y divide-border">
         {filtered.map(article => (
           <a
@@ -172,58 +171,6 @@ const selectedCategory = categories.find(c => c.slug === selectedSlug);
             </div>
           </a>
         ))}
-      </div>
-    ) : (
-      <!-- 全表示時: カテゴリ別グループ -->
-      <div class="space-y-12">
-        {categories.map(cat => {
-          const catArticles = articles.filter(a => a.categorySlug === cat.slug);
-          if (catArticles.length === 0) return null;
-          return (
-            <section>
-              <div class="flex items-baseline justify-between mb-4 pb-3 border-b border-border">
-                <h2 class="text-base font-semibold text-text-primary">{cat.name}</h2>
-                {catArticles.length > 5 && (
-                  <a
-                    href={`/articles?category=${encodeURIComponent(cat.slug)}`}
-                    class="text-xs text-accent hover:underline"
-                  >
-                    もっと見る ({catArticles.length}件) →
-                  </a>
-                )}
-              </div>
-              <div class="space-y-0 divide-y divide-border">
-                {catArticles.slice(0, 5).map(article => (
-                  <a
-                    href={article.link}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    class="group flex items-start gap-4 py-5 hover:bg-[#F5F5F3] -mx-3 px-3 rounded transition-colors"
-                  >
-                    {article.thumbnail && (
-                      <div class="w-24 h-16 flex-shrink-0 rounded overflow-hidden bg-[#F0F0EE]">
-                        <img src={article.thumbnail} alt={article.title} class="w-full h-full object-cover" loading="lazy" />
-                      </div>
-                    )}
-                    <div class="flex-1 min-w-0">
-                      <div class="flex items-center gap-2 mb-1.5">
-                        <span class="text-xs text-text-muted">
-                          {new Date(article.publishedAt).toLocaleDateString('ja-JP')}
-                        </span>
-                      </div>
-                      <h3 class="text-base font-medium text-text-primary leading-snug group-hover:text-accent transition-colors mb-1.5">
-                        {article.title}
-                      </h3>
-                      <p class="text-sm text-text-secondary leading-relaxed line-clamp-2">
-                        {article.excerpt}
-                      </p>
-                    </div>
-                  </a>
-                ))}
-              </div>
-            </section>
-          );
-        })}
       </div>
     )}
   </div>
