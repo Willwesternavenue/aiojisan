@@ -10,12 +10,12 @@ interface Props {
 
 const {
   title,
-  description = 'AIおじさんによる生成AI・テクノロジーの分析とコメンタリー',
+  description = 'AIおじさんのひとりごと — 生成AI・テクノロジーの分析とコメンタリー',
   ogImage,
   canonical,
 } = Astro.props;
 
-const siteTitle = 'AIおじさん';
+const siteTitle = 'AIおじさんのひとりごと';
 const fullTitle = title === siteTitle ? title : `${title} — ${siteTitle}`;
 ---
 
@@ -56,7 +56,7 @@ const fullTitle = title === siteTitle ? title : `${title} — ${siteTitle}`;
       <a href="/" class="group">
         <span class="text-xs text-text-muted tracking-wide">AIの見方、使い方、考え方</span>
         <p class="text-lg font-semibold text-text-primary group-hover:text-accent transition-colors">
-          AIおじさん
+          AIおじさんのひとりごと
         </p>
       </a>
       <nav class="flex items-center gap-6">
@@ -82,7 +82,7 @@ const fullTitle = title === siteTitle ? title : `${title} — ${siteTitle}`;
   <!-- Footer -->
   <footer class="border-t border-border mt-20 py-10">
     <div class="max-w-admin mx-auto px-6 flex items-center justify-between">
-      <p class="text-xs text-text-muted">© 2024 AIおじさん.com</p>
+      <p class="text-xs text-text-muted">© 2024 AIおじさんのひとりごと</p>
       <div class="flex gap-4">
         <a href="/about" class="text-xs text-text-muted hover:text-text-secondary transition-colors">About</a>
         <a href="https://x.com/" target="_blank" rel="noopener noreferrer"

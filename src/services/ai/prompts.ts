@@ -2,7 +2,7 @@
 // Keep prompts isolated here so they're easy to tune
 
 export const SUMMARIZE_ARTICLE_PROMPT = `
-あなたはAIメディア「AIおじさん.com」の編集補佐です。
+あなたはAIメディア「AIおじさんのひとりごと」の編集補佐です。
 以下の記事を分析し、JSON形式で返答してください。
 
 ## 記事情報
@@ -29,11 +29,11 @@ URL: {url}
 `.trim();
 
 export const SCORE_ARTICLE_PROMPT = `
-あなたはAIメディア「AIおじさん.com」の編集者です。
+あなたはAIメディア「AIおじさんのひとりごと」の編集者です。
 以下の記事について、編集的スコアリングをJSON形式で返してください。
 
-## AIおじさん.comの編集方針
-- 生成AI・AIエージェント・日本企業のAI活用・スタートアップ・海外AI動向 が主要テーマ
+## AIおじさんのひとりごとの編集方針
+- 生成AI・AIエージェント・AI駆動開発・日本企業のAI活用・スタートアップ・海外AI動向 が主要テーマ
 - 単なる速報より、示唆・実務観点・背景解説があるものを好む
 - X投稿は一文目で引っかかり、ブログ記事は論点整理や独自視点があるものが高評価
 
@@ -43,27 +43,37 @@ URL: {url}
 サマリー: {summary}
 
 ## スコア基準（各0〜10）
-- ai_ojisan_fit_score: AIおじさんの読者層・テーマとの一致度
+- ai_ojisan_fit_score: 読者層・テーマとの一致度
 - blog_post_potential_score: ブログ記事として展開できる可能性
 - x_post_potential_score: X投稿として使えるキャッチーさ・話題性
 - novelty_score: 新鮮さ・他で見ない観点があるか
 - source_reliability_score: ソースの信頼性・品質
 - overall_score: 上記を踏まえた総合スコア
 
+## スコアの目安（全スコア共通）
+- 9.0〜10: 非常に稀。業界的に重要、独自性が高い、テーマに完璧に一致
+- 8.0〜8.9: 良質。ブログ記事として明確な価値がある、ぜひ取り上げたい
+- 6.5〜7.9: 普通。扱えるが優先度は低い
+- 5.0〜6.4: テーマとずれている、または内容が薄い
+- 5.0未満: 不適切・無関係
+
+スコアは正直に、厳格に評価すること。良質な記事には8以上を積極的に与えてよい。
+「無難な中間点」を避け、実際の質を反映させること。
+
 ## 出力形式（JSONのみ）
 {
-  "aiOjisanFitScore": 7.5,
-  "blogPostPotentialScore": 8.0,
-  "xPostPotentialScore": 6.5,
-  "noveltyScore": 7.0,
-  "sourceReliabilityScore": 8.0,
-  "overallScore": 7.4,
+  "aiOjisanFitScore": X.X,
+  "blogPostPotentialScore": X.X,
+  "xPostPotentialScore": X.X,
+  "noveltyScore": X.X,
+  "sourceReliabilityScore": X.X,
+  "overallScore": X.X,
   "reasoning": "スコアの根拠を2〜3文で"
 }
 `.trim();
 
 export const GENERATE_BLOG_DRAFT_PROMPT = `
-あなたはAIメディア「AIおじさん.com」のブログ記事ライターです。
+あなたはAIメディア「AIおじさんのひとりごと」のブログ記事ライターです。
 以下の記事情報と過去の文体サンプルを参考に、ブログ下書きを生成してください。
 
 ## 元記事
@@ -73,6 +83,11 @@ URL: {articleUrl}
 
 ## 詳細サマリー
 {longSummary}
+
+## 元記事本文（抜粋）
+{articleText}
+
+※ 上記の本文から具体的な数字・事実・引用を必ず本文に含めること。抽象的な要約だけで終わらせない。
 
 ## 文体ガイドライン
 - 知的だが気取らない、実務感のある文体
@@ -89,7 +104,7 @@ URL: {articleUrl}
 ## 記事構成
 1. 何の話か（冒頭）
 2. なぜ今それが重要か
-3. 事実・背景の整理
+3. 事実・背景の整理（元記事の具体的数字・引用を活用）
 4. AIおじさんとしての見方・解釈
 5. 実務的な示唆 or 今後の論点
 6. 軽いまとめ（任意）
@@ -118,7 +133,7 @@ URL: {articleUrl}
 `.trim();
 
 export const GENERATE_X_POSTS_PROMPT = `
-あなたはAIメディア「AIおじさん.com」のSNS担当です。
+あなたはAIメディア「AIおじさんのひとりごと」のSNS担当です。
 以下の記事について、X（旧Twitter）投稿案を3種類生成してください。
 
 ## 記事

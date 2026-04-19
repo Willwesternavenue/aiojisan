@@ -8,7 +8,8 @@ import { getAiProvider } from '@/services/ai';
 import { generateDraftForArticle } from '@/services/drafts/generate';
 import { createLogger } from '@/lib/logger';
 
-const AUTO_DRAFT_THRESHOLD = 7.9;
+const DRAFT_THRESHOLD         = 7.9;
+const AUTO_PUBLISH_THRESHOLD  = 8.5;
 
 const logger = createLogger('cron:process-articles');
 const BATCH_SIZE = 20;
@@ -101,14 +102,24 @@ async function handler(request: Request): Promise<Response> {
       } else {
         processed++;
 
-        // Auto-draft if score >= threshold
-        if (scores.overallScore >= AUTO_DRAFT_THRESHOLD) {
+        // Auto-publish if score >= 8.5, auto-draft if >= 7.9
+        if (scores.overallScore >= AUTO_PUBLISH_THRESHOLD) {
+          logger.info('Score threshold met, auto-publishing', {
+            articleId: article.id,
+            score: scores.overallScore,
+          });
+          try {
+            await generateDraftForArticle(article.id, { autoPublish: true });
+          } catch (draftErr) {
+            logger.warn('Auto-publish failed', { articleId: article.id, err: String(draftErr) });
+          }
+        } else if (scores.overallScore >= DRAFT_THRESHOLD) {
           logger.info('Score threshold met, auto-drafting', {
             articleId: article.id,
             score: scores.overallScore,
           });
           try {
-            await generateDraftForArticle(article.id);
+            await generateDraftForArticle(article.id, { autoPublish: false });
           } catch (draftErr) {
             logger.warn('Auto-draft failed', { articleId: article.id, err: String(draftErr) });
           }

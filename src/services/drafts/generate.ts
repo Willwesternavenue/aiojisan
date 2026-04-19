@@ -3,12 +3,15 @@
 import { getAdminClient } from '@/lib/supabase/server';
 import { getAiProvider } from '@/services/ai';
 import { getStyleChunksForDraft } from '@/services/rag/retrieval';
-import { createWordPressDraft } from '@/services/wordpress/client';
+import { createWordPressDraft, generateAndAttachFeaturedImage } from '@/services/wordpress/client';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('draft-generator');
 
-export async function generateDraftForArticle(articleId: string): Promise<{ wpPostId: number } | null> {
+export async function generateDraftForArticle(
+  articleId: string,
+  options: { autoPublish?: boolean } = {},
+): Promise<{ wpPostId: number } | null> {
   const db = getAdminClient();
   const ai = getAiProvider();
 
@@ -37,8 +40,9 @@ export async function generateDraftForArticle(articleId: string): Promise<{ wpPo
   }
 
   const insights = article.article_ai_insights;
+  const { autoPublish = false } = options;
 
-  logger.info('Auto-generating draft', { articleId, title: article.title });
+  logger.info('Generating draft', { articleId, title: article.title, autoPublish });
 
   const styleChunks = await getStyleChunksForDraft(
     article.title,
@@ -56,12 +60,33 @@ export async function generateDraftForArticle(articleId: string): Promise<{ wpPo
   });
 
   const selectedTitle = draft.titleOptions[0];
+  const wpStatus = autoPublish ? 'publish' : 'draft';
+
   const { id: wpPostId } = await createWordPressDraft(
     selectedTitle,
     draft.body,
     insights?.short_summary ?? undefined,
     draft.slug,
+    wpStatus,
   );
+
+  // Generate and attach featured image for auto-published articles only
+  if (autoPublish) {
+    try {
+      await generateAndAttachFeaturedImage(
+        wpPostId,
+        selectedTitle,
+        insights?.short_summary ?? '',
+        draft.slug,
+      );
+    } catch (imgErr) {
+      logger.warn('Featured image generation failed, post already published without image', {
+        articleId,
+        wpPostId,
+        err: String(imgErr),
+      });
+    }
+  }
 
   await db.from('generated_drafts').insert({
     article_id: articleId,
@@ -69,12 +94,13 @@ export async function generateDraftForArticle(articleId: string): Promise<{ wpPo
     draft_outline: draft.outline,
     draft_body: draft.body,
     wordpress_post_id: wpPostId,
-    status: 'sent_to_wordpress',
+    status: autoPublish ? 'published' : 'sent_to_wordpress',
     generation_metadata: {
       titleOptions: draft.titleOptions,
       styleChunksUsed: styleChunks.length,
       model: 'gpt-4o',
       auto_generated: true,
+      auto_published: autoPublish,
     },
   });
 
@@ -83,6 +109,6 @@ export async function generateDraftForArticle(articleId: string): Promise<{ wpPo
     action_type: 'generate_blog_draft',
   });
 
-  logger.info('Auto-draft sent to WordPress', { articleId, wpPostId, title: selectedTitle });
+  logger.info('Draft processed', { articleId, wpPostId, title: selectedTitle, status: wpStatus });
   return { wpPostId };
 }

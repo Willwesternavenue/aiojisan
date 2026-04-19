@@ -1,13 +1,13 @@
 // WordPress REST API client
 // Uses Application Password auth — server-only
 
+import OpenAI from 'openai';
 import { marked } from 'marked';
-import { getEnv } from '@/lib/env';
+import { getEnv, getOpenAiKey } from '@/lib/env';
 import { createLogger } from '@/lib/logger';
 
 // Convert markdown to WordPress-friendly HTML
 function markdownToHtml(markdown: string): string {
-  // Configure marked for WordPress compatibility
   marked.setOptions({ breaks: true });
   const html = marked.parse(markdown) as string;
   return html;
@@ -34,6 +34,11 @@ interface WpPostResponse {
   link: string;
   status: string;
   title: { rendered: string };
+}
+
+interface WpMediaResponse {
+  id: number;
+  source_url: string;
 }
 
 function getAuthHeader(): string {
@@ -76,15 +81,16 @@ export async function createWordPressDraft(
   body: string,
   excerpt?: string,
   slug?: string,
+  status: 'draft' | 'publish' = 'draft',
 ): Promise<{ id: number; editUrl: string }> {
-  logger.info('Creating WordPress draft', { title, slug });
+  logger.info('Creating WordPress post', { title, slug, status });
 
   const htmlBody = markdownToHtml(body);
 
   const payload: WpPostPayload = {
     title,
     content: htmlBody,
-    status: 'draft',
+    status,
     excerpt,
     featured_media: PLACEHOLDER_MEDIA_ID,
     ...(slug ? { slug } : {}),
@@ -98,7 +104,7 @@ export async function createWordPressDraft(
   const env = getEnv();
   const editUrl = `${env.WORDPRESS_BASE_URL}/wp-admin/post.php?post=${post.id}&action=edit`;
 
-  logger.info('Draft created', { id: post.id, editUrl });
+  logger.info('Post created', { id: post.id, status, editUrl });
 
   return { id: post.id, editUrl };
 }
@@ -124,4 +130,69 @@ export async function testWordPressConnection(): Promise<boolean> {
     logger.error('WordPress connection test failed', { err: String(err) });
     return false;
   }
+}
+
+/**
+ * Generate a featured image with DALL-E 3 and attach it to a WordPress post.
+ * Only called for auto-published articles to keep costs low.
+ */
+export async function generateAndAttachFeaturedImage(
+  postId: number,
+  title: string,
+  summary: string,
+  slug: string,
+): Promise<void> {
+  logger.info('Generating featured image', { postId, slug });
+
+  const openai = new OpenAI({ apiKey: getOpenAiKey() });
+
+  // Generate image with DALL-E 3 using b64_json to avoid URL expiry issues
+  const imagePrompt =
+    `Professional tech blog header image for article: "${title}". ` +
+    `Clean, modern flat illustration style. Dark teal and slate color palette. ` +
+    `Minimalist technology motifs. No text. No faces. No logos.`;
+
+  const imageResponse = await openai.images.generate({
+    model: 'dall-e-3',
+    prompt: imagePrompt,
+    n: 1,
+    size: '1792x1024',
+    quality: 'standard',
+    response_format: 'b64_json',
+  });
+
+  const b64 = imageResponse.data[0]?.b64_json;
+  if (!b64) throw new Error('DALL-E 3 returned no image data');
+
+  const imageBuffer = Buffer.from(b64, 'base64');
+
+  // Upload to WordPress media library
+  const filename = `${slug}.png`;
+  const mediaUrl = `${getApiBase()}/media`;
+
+  const mediaRes = await fetch(mediaUrl, {
+    method: 'POST',
+    headers: {
+      'Authorization': getAuthHeader(),
+      'Content-Disposition': `attachment; filename="${filename}"`,
+      'Content-Type': 'image/png',
+    },
+    body: imageBuffer,
+  });
+
+  if (!mediaRes.ok) {
+    const body = await mediaRes.text();
+    throw new Error(`WordPress media upload failed ${mediaRes.status}: ${body}`);
+  }
+
+  const media = await mediaRes.json() as WpMediaResponse;
+  logger.info('Image uploaded to WordPress', { mediaId: media.id, url: media.source_url });
+
+  // Attach media to post
+  await wpFetch<WpPostResponse>(`/posts/${postId}`, {
+    method: 'POST',
+    body: JSON.stringify({ featured_media: media.id }),
+  });
+
+  logger.info('Featured image attached', { postId, mediaId: media.id });
 }

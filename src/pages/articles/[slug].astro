@@ -1,0 +1,128 @@
+---
+import PublicLayout from '@/layouts/PublicLayout.astro';
+
+const { slug } = Astro.params;
+
+const base = import.meta.env.WORDPRESS_BASE_URL?.replace(/\/$/, '') ?? '';
+
+interface WpPost {
+  id: number;
+  slug: string;
+  date: string;
+  title: { rendered: string };
+  content: { rendered: string };
+  excerpt: { rendered: string };
+  link: string;
+  categories: number[];
+  _embedded?: {
+    'wp:featuredmedia'?: Array<{ source_url: string; alt_text: string }>;
+    'wp:term'?: Array<Array<{ id: number; name: string; slug: string }>>;
+  };
+}
+
+let post: WpPost | null = null;
+
+try {
+  const res = await fetch(
+    `${base}/wp-json/wp/v2/posts?slug=${encodeURIComponent(slug!)}&_embed=1&status=publish`,
+  );
+  if (res.ok) {
+    const posts: WpPost[] = await res.json();
+    post = posts[0] ?? null;
+  }
+} catch {
+  // fall through to redirect
+}
+
+if (!post) {
+  return Astro.redirect('/articles');
+}
+
+function stripHtml(html: string): string {
+  return html
+    .replace(/<[^>]*>/g, '')
+    .replace(/&amp;/g, '&')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&quot;/g, '"')
+    .replace(/&#039;/g, "'")
+    .replace(/&nbsp;/g, ' ')
+    .trim();
+}
+
+const title = stripHtml(post.title.rendered);
+const excerpt = stripHtml(post.excerpt.rendered).slice(0, 160);
+const featuredImage = post._embedded?.['wp:featuredmedia']?.[0];
+const categories = post._embedded?.['wp:term']?.[0] ?? [];
+const primaryCategory = categories[0];
+const publishedAt = new Date(post.date).toLocaleDateString('ja-JP', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+});
+
+const canonicalUrl = Astro.url.href;
+---
+
+<PublicLayout
+  title={title}
+  description={excerpt}
+  ogImage={featuredImage?.source_url}
+  canonical={canonicalUrl}
+>
+  <article class="max-w-prose mx-auto px-6 py-12">
+
+    <!-- Back link -->
+    <div class="mb-8">
+      <a href="/articles" class="text-sm text-text-muted hover:text-accent transition-colors">
+        ← 記事一覧
+      </a>
+    </div>
+
+    <!-- Meta -->
+    <div class="flex items-center gap-3 mb-4">
+      {primaryCategory && (
+        <a
+          href={`/articles?category=${primaryCategory.slug}`}
+          class="text-xs text-accent font-medium hover:underline"
+        >
+          {primaryCategory.name}
+        </a>
+      )}
+      <span class="text-xs text-text-muted">{publishedAt}</span>
+    </div>
+
+    <!-- Title -->
+    <h1 class="text-3xl font-semibold text-text-primary leading-tight mb-6">
+      {title}
+    </h1>
+
+    <!-- Featured image -->
+    {featuredImage && (
+      <div class="mb-8 rounded-md overflow-hidden">
+        <img
+          src={featuredImage.source_url}
+          alt={featuredImage.alt_text || title}
+          class="w-full object-cover"
+          loading="eager"
+        />
+      </div>
+    )}
+
+    <!-- Article body -->
+    <div class="article-body" set:html={post.content.rendered} />
+
+    <!-- Source link -->
+    <div class="mt-10 pt-6 border-t border-border">
+      <a
+        href={post.link}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="text-sm text-text-muted hover:text-accent transition-colors"
+      >
+        元記事を読む →
+      </a>
+    </div>
+
+  </article>
+</PublicLayout>

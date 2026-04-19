@@ -133,6 +133,7 @@ export const openAiProvider: AiProvider = {
       articleUrl: input.articleUrl,
       shortSummary: input.shortSummary,
       longSummary: input.longSummary,
+      articleText: input.articleText.slice(0, 3000),
       styleChunks: styleChunkText,
     });
 
