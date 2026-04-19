@@ -153,16 +153,15 @@ export async function generateAndAttachFeaturedImage(
     `Minimalist technology motifs. No text. No faces. No logos.`;
 
   const imageResponse = await openai.images.generate({
-    model: 'dall-e-3',
+    model: 'gpt-image-1',
     prompt: imagePrompt,
     n: 1,
-    size: '1792x1024',
-    quality: 'standard',
-    response_format: 'b64_json',
+    size: '1536x1024',
+    quality: 'high',
   });
 
   const b64 = imageResponse.data[0]?.b64_json;
-  if (!b64) throw new Error('DALL-E 3 returned no image data');
+  if (!b64) throw new Error('gpt-image-1 returned no image data');
 
   const imageBuffer = Buffer.from(b64, 'base64');
 
