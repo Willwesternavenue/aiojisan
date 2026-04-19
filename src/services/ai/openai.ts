@@ -22,7 +22,7 @@ import type {
 
 const logger = createLogger('openai');
 
-const SUMMARY_MODEL = 'gpt-4o-mini';
+const SUMMARY_MODEL = 'gpt-5-nano';
 const DRAFT_MODEL   = 'gpt-4o';
 const EMBED_MODEL   = 'text-embedding-3-small';
 
@@ -133,7 +133,7 @@ export const openAiProvider: AiProvider = {
       articleUrl: input.articleUrl,
       shortSummary: input.shortSummary,
       longSummary: input.longSummary,
-      articleText: input.articleText.slice(0, 3000),
+      articleText: input.articleText.slice(0, 8000),
       styleChunks: styleChunkText,
     });
 
