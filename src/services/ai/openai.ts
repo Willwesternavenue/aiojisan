@@ -22,7 +22,7 @@ import type {
 
 const logger = createLogger('openai');
 
-const SUMMARY_MODEL = 'gpt-5-nano';
+const SUMMARY_MODEL = 'gpt-4o-mini';
 const DRAFT_MODEL   = 'gpt-4o';
 const EMBED_MODEL   = 'text-embedding-3-small';
 
