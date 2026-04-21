@@ -39,3 +39,8 @@ export const getSupabaseUrl = () => getEnv().SUPABASE_URL;
 export const getSupabaseServiceKey = () => getEnv().SUPABASE_SERVICE_ROLE_KEY;
 export const getSupabaseAnonKey = () => getEnv().SUPABASE_ANON_KEY;
 export const getOpenAiKey = () => getEnv().OPENAI_API_KEY;
+export function getAnthropicKey(): string {
+  const key = getEnv().ANTHROPIC_API_KEY;
+  if (!key) throw new Error('ANTHROPIC_API_KEY is not set');
+  return key;
+}
