@@ -149,8 +149,11 @@ export async function generateAndAttachFeaturedImage(
   // Generate image with DALL-E 3 using b64_json to avoid URL expiry issues
   const imagePrompt =
     `Professional tech blog header image for article: "${title}". ` +
-    `Clean, modern flat illustration style. Dark teal and slate color palette. ` +
-    `Minimalist technology motifs. No text. No faces. No logos.`;
+    `Context: ${summary.slice(0, 200)}. ` +
+    `Clean, modern flat illustration style with bright, vibrant colors. ` +
+    `Light background with vivid accent colors (blues, purples, teals, greens). ` +
+    `High contrast, visually appealing technology motifs relevant to the article topic. ` +
+    `No text. No faces. No logos. No dark or muted backgrounds.`;
 
   const imageResponse = await openai.images.generate({
     model: 'gpt-image-1',
