@@ -148,12 +148,11 @@ export async function generateAndAttachFeaturedImage(
   const ai = new GoogleGenAI({ apiKey: getGoogleAiKey() });
 
   const imagePrompt =
-    `Professional tech illustration for a Japanese article titled "${title}". ` +
-    `Topic: ${summary.slice(0, 150)}. ` +
-    `Style: clean modern flat illustration with bright vivid colors, light background. ` +
-    `Any text or labels must be in English only. ` +
-    `STRICTLY NO Chinese, NO Japanese, NO Korean characters. ` +
-    `No faces. No logos. No dark or muted backgrounds.`;
+    `日本語のテック記事のヘッダー画像を作成してください。` +
+    `記事タイトル：「${title}」` +
+    `テーマ：${summary.slice(0, 150)}` +
+    `スタイル：明るい色彩のフラットイラスト、白い背景、モダンなテクノロジーモチーフ。` +
+    `テキストラベルは日本語または英語で。顔なし、ロゴなし、暗い背景なし。`;
 
   const imageResponse = await ai.models.generateImages({
     model: 'imagen-4.0-generate-001',
