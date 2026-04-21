@@ -15,6 +15,7 @@ const envSchema = z.object({
   CRON_SECRET: z.string().min(16),
   // Optional
   ANTHROPIC_API_KEY: z.string().optional(),
+  GOOGLE_AI_API_KEY: z.string().optional(),
 });
 
 type Env = z.infer<typeof envSchema>;
@@ -42,5 +43,10 @@ export const getOpenAiKey = () => getEnv().OPENAI_API_KEY;
 export function getAnthropicKey(): string {
   const key = getEnv().ANTHROPIC_API_KEY;
   if (!key) throw new Error('ANTHROPIC_API_KEY is not set');
+  return key;
+}
+export function getGoogleAiKey(): string {
+  const key = getEnv().GOOGLE_AI_API_KEY;
+  if (!key) throw new Error('GOOGLE_AI_API_KEY is not set');
   return key;
 }

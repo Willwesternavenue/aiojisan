@@ -2,8 +2,9 @@
 // Uses Application Password auth — server-only
 
 import OpenAI from 'openai';
+import { GoogleGenAI } from '@google/genai';
 import { marked } from 'marked';
-import { getEnv, getOpenAiKey } from '@/lib/env';
+import { getEnv, getOpenAiKey, getGoogleAiKey } from '@/lib/env';
 import { createLogger } from '@/lib/logger';
 
 // Convert markdown to WordPress-friendly HTML
@@ -144,9 +145,8 @@ export async function generateAndAttachFeaturedImage(
 ): Promise<void> {
   logger.info('Generating featured image', { postId, slug });
 
-  const openai = new OpenAI({ apiKey: getOpenAiKey() });
+  const ai = new GoogleGenAI({ apiKey: getGoogleAiKey() });
 
-  // Generate image with DALL-E 3 using b64_json to avoid URL expiry issues
   const imagePrompt =
     `Professional tech blog header image for article: "${title}". ` +
     `Context: ${summary.slice(0, 200)}. ` +
@@ -155,18 +155,20 @@ export async function generateAndAttachFeaturedImage(
     `High contrast, visually appealing technology motifs relevant to the article topic. ` +
     `No text. No faces. No logos. No dark or muted backgrounds.`;
 
-  const imageResponse = await openai.images.generate({
-    model: 'gpt-image-1',
+  const imageResponse = await ai.models.generateImages({
+    model: 'imagen-4.0-generate-001',
     prompt: imagePrompt,
-    n: 1,
-    size: '1536x1024',
-    quality: 'high',
+    config: {
+      numberOfImages: 1,
+      aspectRatio: '16:9',
+      outputMimeType: 'image/png',
+    },
   });
 
-  const b64 = imageResponse.data[0]?.b64_json;
-  if (!b64) throw new Error('gpt-image-1 returned no image data');
+  const b64 = imageResponse.generatedImages?.[0]?.image?.imageBytes;
+  if (!b64) throw new Error('Imagen 3 returned no image data');
 
-  const imageBuffer = Buffer.from(b64, 'base64');
+  const imageBuffer = Buffer.from(b64 as string, 'base64');
 
   // Upload to WordPress media library
   const filename = `${slug}.png`;

@@ -12,6 +12,7 @@
     "@anthropic-ai/sdk": "^0.90.0",
     "@astrojs/node": "^10.0.4",
     "@astrojs/vercel": "^10.0.4",
+    "@google/genai": "^1.50.1",
     "@supabase/supabase-js": "^2.47.0",
     "@tailwindcss/vite": "^4.2.2",
     "astro": "^6.1.5",
