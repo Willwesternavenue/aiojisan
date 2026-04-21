@@ -148,11 +148,11 @@ export async function generateAndAttachFeaturedImage(
   const ai = new GoogleGenAI({ apiKey: getGoogleAiKey() });
 
   const imagePrompt =
-    `Professional tech illustration for an article titled "${title}". ` +
+    `Professional tech illustration for a Japanese article titled "${title}". ` +
     `Topic: ${summary.slice(0, 150)}. ` +
     `Style: clean modern flat illustration with bright vivid colors, light background. ` +
-    `Any text or labels in the image must be in English only. ` +
-    `STRICTLY NO Chinese characters, NO Mandarin, NO Korean, NO Japanese kanji — English only if any language is shown. ` +
+    `Any text or labels must be in English only. ` +
+    `STRICTLY NO Chinese, NO Japanese, NO Korean characters. ` +
     `No faces. No logos. No dark or muted backgrounds.`;
 
   const imageResponse = await ai.models.generateImages({
