@@ -41,7 +41,7 @@ async function fetchPosts(categoryId?: number): Promise<WpPost[]> {
       _embed: 'wp:featuredmedia',
       orderby: 'date',
       order: 'desc',
-      _fields: 'id,slug,title,excerpt,date,link,featured_media,categories',
+      _fields: 'id,slug,title,excerpt,date,link,featured_media,categories,_links',
     });
     if (categoryId) params.set('categories', String(categoryId));
     const res = await fetch(`${base}/wp-json/wp/v2/posts?${params}`);

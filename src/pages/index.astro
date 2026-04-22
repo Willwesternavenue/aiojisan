@@ -19,7 +19,7 @@ async function fetchWpPosts(perPage = 10): Promise<WpPost[]> {
   const base = import.meta.env.WORDPRESS_BASE_URL?.replace(/\/$/, '') ?? '';
   try {
     const res = await fetch(
-      `${base}/wp-json/wp/v2/posts?per_page=${perPage}&status=publish&_embed=wp:featuredmedia,wp:term&_fields=id,slug,title,excerpt,date,link,featured_media,categories`
+      `${base}/wp-json/wp/v2/posts?per_page=${perPage}&status=publish&_embed=wp:featuredmedia,wp:term&_fields=id,slug,title,excerpt,date,link,featured_media,categories,_links`
     );
     if (!res.ok) return [];
     return res.json();
