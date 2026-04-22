@@ -148,26 +148,23 @@ export async function generateAndAttachFeaturedImage(
   const ai = new GoogleGenAI({ apiKey: getGoogleAiKey() });
 
   const imagePrompt =
-    `Professional tech blog header image for article: "${title}". ` +
-    `Context: ${summary.slice(0, 150)}. ` +
-    `Style: clean modern flat illustration with bright vivid colors, light background. ` +
-    `English text labels only. No Chinese, no Japanese, no Korean characters. ` +
-    `No faces. No logos. No dark or muted backgrounds.`;
+    `テックブログのヘッダー画像を生成してください。` +
+    `テーマ：「${title}」。` +
+    `補足：${summary.slice(0, 150)}。` +
+    `スタイル：明るい配色のフラットイラスト、白い背景、モダンなテクノロジーモチーフ。日本語テキスト使用可。顔なし、ロゴなし。`;
 
-  const imageResponse = await ai.models.generateImages({
-    model: 'imagen-4.0-generate-001',
-    prompt: imagePrompt,
-    config: {
-      numberOfImages: 1,
-      aspectRatio: '16:9',
-      outputMimeType: 'image/png',
-    },
+  const imageResponse = await ai.models.generateContent({
+    model: 'gemini-3-pro-image-preview',
+    contents: imagePrompt,
+    config: { responseModalities: ['IMAGE', 'TEXT'] },
   });
 
-  const b64 = imageResponse.generatedImages?.[0]?.image?.imageBytes;
-  if (!b64) throw new Error('Imagen 3 returned no image data');
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const parts: any[] = (imageResponse as any).candidates?.[0]?.content?.parts ?? [];
+  const imgPart = parts.find((p: any) => p.inlineData);
+  if (!imgPart?.inlineData?.data) throw new Error('gemini-3-pro-image-preview returned no image data');
 
-  const imageBuffer = Buffer.from(b64 as string, 'base64');
+  const imageBuffer = Buffer.from(imgPart.inlineData.data, 'base64');
 
   // Upload to WordPress media library
   const filename = `${slug}.png`;
