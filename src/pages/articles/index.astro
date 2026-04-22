@@ -36,11 +36,12 @@ async function fetchCategories(): Promise<WpCategory[]> {
 async function fetchPosts(categoryId?: number): Promise<WpPost[]> {
   try {
     const params = new URLSearchParams({
-      per_page: '100',
+      per_page: '50',
       status: 'publish',
-      _embed: '1',
+      _embed: 'wp:featuredmedia',
       orderby: 'date',
       order: 'desc',
+      _fields: 'id,slug,title,excerpt,date,link,featured_media,categories',
     });
     if (categoryId) params.set('categories', String(categoryId));
     const res = await fetch(`${base}/wp-json/wp/v2/posts?${params}`);
