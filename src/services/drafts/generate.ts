@@ -8,6 +8,7 @@ import {
   generateAndAttachFeaturedImage,
   getOrCreateWordPressCategory,
 } from '@/services/wordpress/client';
+import { postToX } from '@/services/social/x';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('draft-generator');
@@ -117,6 +118,38 @@ function detectPillarCategories(fields: Array<string | null | undefined>): Pilla
     : [PILLAR_CATEGORIES[2]];
 }
 
+function getPublicArticleUrl(slug: string): string {
+  return `https://www.aiojisan.com/articles/${slug}`;
+}
+
+function getHashtags(categories: PillarCategory[]): string[] {
+  const tags = new Set<string>(['#AIおじさん']);
+
+  for (const category of categories) {
+    if (category.slug === 'physical-ai') tags.add('#フィジカルAI');
+    if (category.slug === 'ai-driven-development') tags.add('#AI駆動開発');
+    if (category.slug === 'generative-ai-news') tags.add('#生成AI');
+  }
+
+  return [...tags].slice(0, 4);
+}
+
+function formatXPost(text: string, url: string, hashtags: string[]): string {
+  const withoutUrl = text
+    .replace(url, '')
+    .replace(/https:\/\/www\.aiojisan\.com\/articles\/\S+/g, '')
+    .replace(/https?:\/\/\S+/g, '')
+    .trim();
+  const tagLine = hashtags.join(' ');
+  const suffix = `\n\n${url}\n${tagLine}`;
+  const maxBodyLength = 280 - suffix.length;
+  const body = withoutUrl.length > maxBodyLength
+    ? `${withoutUrl.slice(0, Math.max(0, maxBodyLength - 1)).trim()}…`
+    : withoutUrl;
+
+  return `${body}${suffix}`.trim();
+}
+
 export async function generateDraftForArticle(
   articleId: string,
   options: { autoPublish?: boolean } = {},
@@ -221,6 +254,31 @@ export async function generateDraftForArticle(
         articleId,
         wpPostId,
         err: String(imgErr),
+      });
+    }
+
+    try {
+      const publicUrl = getPublicArticleUrl(draft.slug);
+      const xPosts = await ai.generateXPosts({
+        articleTitle: selectedTitle,
+        articleUrl: publicUrl,
+        shortSummary: insights?.short_summary ?? '',
+        topics: insights?.topics ?? [],
+      });
+      const text = formatXPost(xPosts.direct, publicUrl, getHashtags(pillarCategories));
+      const result = await postToX({ text, articleId, url: publicUrl });
+
+      await db.from('generated_x_posts').insert({
+        article_id: articleId,
+        variant_label: 'direct',
+        text,
+        tone: result.tweeted ? '自動投稿済み' : '自動投稿スキップ',
+      });
+    } catch (xErr) {
+      logger.warn('X auto-post failed, post already published', {
+        articleId,
+        wpPostId,
+        err: String(xErr),
       });
     }
   }

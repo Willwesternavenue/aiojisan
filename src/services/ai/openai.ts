@@ -17,6 +17,7 @@ import type {
   EditorialScoreOutput,
   BlogDraftInput,
   BlogDraftOutput,
+  XPostInput,
   XPostDraftOutput,
 } from '@/types/ai';
 
@@ -162,9 +163,7 @@ export const openAiProvider: AiProvider = {
     };
   },
 
-  async generateXPosts(
-    input: Pick<BlogDraftInput, 'articleTitle' | 'articleUrl' | 'shortSummary' | 'topics'>,
-  ): Promise<XPostDraftOutput> {
+  async generateXPosts(input: XPostInput): Promise<XPostDraftOutput> {
     const client = getClient();
 
     const prompt = fillTemplate(GENERATE_X_POSTS_PROMPT, {

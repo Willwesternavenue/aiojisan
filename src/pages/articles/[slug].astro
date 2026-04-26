@@ -127,6 +127,12 @@ const publishedAt = new Date(post.date).toLocaleDateString('ja-JP', {
 });
 
 const canonicalUrl = `https://www.aiojisan.com/articles/${post.slug}`;
+const shareText = `${title} — AIおじさんのひとりごと`;
+const xShareUrl = `https://twitter.com/intent/tweet?${new URLSearchParams({
+  text: shareText,
+  url: canonicalUrl,
+  hashtags: 'AIおじさん,生成AI',
+}).toString()}`;
 
 const jsonLd = {
   '@context': 'https://schema.org',
@@ -188,6 +194,20 @@ const jsonLd = {
       {title}
     </h1>
 
+    <!-- Share -->
+    <div class="mb-8">
+      <a
+        href={xShareUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="inline-flex items-center gap-2 px-3 py-1.5 border border-border rounded-full text-xs font-medium text-text-secondary hover:text-accent hover:border-accent transition-colors"
+        aria-label="この記事をXでシェア"
+      >
+        <span class="text-sm leading-none">𝕏</span>
+        <span>シェアする</span>
+      </a>
+    </div>
+
     <!-- Featured image -->
     {featuredImage && (
       <div class="mb-8 rounded-md overflow-hidden">
@@ -212,6 +232,20 @@ const jsonLd = {
         class="text-sm text-text-muted hover:text-accent transition-colors"
       >
         元記事を読む →
+      </a>
+    </div>
+
+    <!-- Share footer -->
+    <div class="mt-8">
+      <a
+        href={xShareUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        class="inline-flex items-center gap-2 px-3 py-1.5 border border-border rounded-full text-xs font-medium text-text-secondary hover:text-accent hover:border-accent transition-colors"
+        aria-label="この記事をXでシェア"
+      >
+        <span class="text-sm leading-none">𝕏</span>
+        <span>この記事をシェアする</span>
       </a>
     </div>
 

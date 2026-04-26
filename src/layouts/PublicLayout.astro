@@ -21,6 +21,7 @@ const siteTitle = 'AIおじさんのひとりごと';
 const fullTitle = title === siteTitle ? title : `${title} — ${siteTitle}`;
 const siteUrl = 'https://www.aiojisan.com';
 const pageUrl = canonical ?? (siteUrl + Astro.url.pathname);
+const xProfileUrl = 'https://x.com/aiojisanblog';
 ---
 
 <!DOCTYPE html>
@@ -85,7 +86,7 @@ const pageUrl = canonical ?? (siteUrl + Astro.url.pathname);
         <a href="/about" class="text-sm text-text-secondary hover:text-text-primary transition-colors">
           About
         </a>
-        <a href="https://x.com/" target="_blank" rel="noopener noreferrer"
+        <a href={xProfileUrl} target="_blank" rel="noopener noreferrer"
           class="text-sm text-text-secondary hover:text-text-primary transition-colors">
           𝕏
         </a>
@@ -104,7 +105,7 @@ const pageUrl = canonical ?? (siteUrl + Astro.url.pathname);
       <p class="text-xs text-text-muted">© 2024 AIおじさんのひとりごと</p>
       <div class="flex gap-4">
         <a href="/about" class="text-xs text-text-muted hover:text-text-secondary transition-colors">About</a>
-        <a href="https://x.com/" target="_blank" rel="noopener noreferrer"
+        <a href={xProfileUrl} target="_blank" rel="noopener noreferrer"
           class="text-xs text-text-muted hover:text-text-secondary transition-colors">𝕏</a>
       </div>
     </div>

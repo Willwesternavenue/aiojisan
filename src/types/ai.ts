@@ -35,6 +35,8 @@ export interface BlogDraftInput {
   styleChunks: string[];  // Retrieved RAG chunks for style guidance
 }
 
+export type XPostInput = Pick<BlogDraftInput, 'articleTitle' | 'articleUrl' | 'shortSummary' | 'topics'>;
+
 export interface BlogDraftOutput {
   titleOptions: [string, string, string];
   slug: string;
@@ -52,6 +54,6 @@ export interface AiProvider {
   summarizeArticle(input: ArticleSummaryInput): Promise<ArticleSummaryOutput>;
   scoreArticle(input: ArticleSummaryInput & { summary: string }): Promise<EditorialScoreOutput>;
   generateBlogDraft(input: BlogDraftInput): Promise<BlogDraftOutput>;
-  generateXPosts(input: Pick<BlogDraftInput, 'articleTitle' | 'articleUrl' | 'shortSummary' | 'topics'>): Promise<XPostDraftOutput>;
+  generateXPosts(input: XPostInput): Promise<XPostDraftOutput>;
   generateEmbedding(text: string): Promise<number[]>;
 }
