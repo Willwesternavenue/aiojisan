@@ -6,6 +6,7 @@ interface Props {
   description?: string;
   ogImage?: string;
   canonical?: string;
+  jsonLd?: Record<string, unknown>;
 }
 
 const {
@@ -13,10 +14,13 @@ const {
   description = 'AIおじさんのひとりごと — 生成AI・テクノロジーの分析とコメンタリー',
   ogImage,
   canonical,
+  jsonLd,
 } = Astro.props;
 
 const siteTitle = 'AIおじさんのひとりごと';
 const fullTitle = title === siteTitle ? title : `${title} — ${siteTitle}`;
+const siteUrl = 'https://www.aiojisan.com';
+const pageUrl = canonical ?? (siteUrl + Astro.url.pathname);
 ---
 
 <!DOCTYPE html>
@@ -36,13 +40,26 @@ const fullTitle = title === siteTitle ? title : `${title} — ${siteTitle}`;
   </script>
   <title>{fullTitle}</title>
   <meta name="description" content={description} />
-  {canonical && <link rel="canonical" href={canonical} />}
+  <link rel="canonical" href={pageUrl} />
 
   <!-- OG -->
   <meta property="og:title"       content={fullTitle} />
   <meta property="og:description" content={description} />
   <meta property="og:type"        content="website" />
-  {ogImage && <meta property="og:image" content={ogImage} />}
+  <meta property="og:url"         content={pageUrl} />
+  <meta property="og:site_name"   content={siteTitle} />
+  {ogImage && <meta property="og:image"       content={ogImage} />}
+  {ogImage && <meta property="og:image:width"  content="1200" />}
+  {ogImage && <meta property="og:image:height" content="630" />}
+
+  <!-- Twitter/X Card -->
+  <meta name="twitter:card"        content={ogImage ? 'summary_large_image' : 'summary'} />
+  <meta name="twitter:title"       content={fullTitle} />
+  <meta name="twitter:description" content={description} />
+  {ogImage && <meta name="twitter:image" content={ogImage} />}
+
+  <!-- JSON-LD -->
+  {jsonLd && <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} />}
 
   <!-- Fonts: non-blocking async load -->
   <link rel="preconnect" href="https://fonts.googleapis.com" />

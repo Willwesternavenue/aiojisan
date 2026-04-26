@@ -9,6 +9,7 @@ interface WpPost {
   id: number;
   slug: string;
   date: string;
+  modified?: string;
   title: { rendered: string };
   content: { rendered: string };
   excerpt: { rendered: string };
@@ -61,7 +62,32 @@ const publishedAt = new Date(post.date).toLocaleDateString('ja-JP', {
   day: 'numeric',
 });
 
-const canonicalUrl = Astro.url.href;
+const canonicalUrl = `https://www.aiojisan.com/articles/${post.slug}`;
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'Article',
+  headline: title,
+  description: excerpt,
+  url: canonicalUrl,
+  datePublished: post.date,
+  dateModified: post.modified ?? post.date,
+  image: featuredImage?.source_url ?? undefined,
+  author: {
+    '@type': 'Person',
+    name: 'AIおじさん',
+    url: 'https://www.aiojisan.com/about',
+  },
+  publisher: {
+    '@type': 'Organization',
+    name: 'AIおじさんのひとりごと',
+    url: 'https://www.aiojisan.com',
+  },
+  mainEntityOfPage: {
+    '@type': 'WebPage',
+    '@id': canonicalUrl,
+  },
+};
 ---
 
 <PublicLayout
@@ -69,6 +95,7 @@ const canonicalUrl = Astro.url.href;
   description={excerpt}
   ogImage={featuredImage?.source_url}
   canonical={canonicalUrl}
+  jsonLd={jsonLd}
 >
   <article class="max-w-prose mx-auto px-6 py-12">
 
