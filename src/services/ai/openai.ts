@@ -96,6 +96,7 @@ export const openAiProvider: AiProvider = {
     const prompt = fillTemplate(SCORE_ARTICLE_PROMPT, {
       title: input.title,
       url: input.url,
+      sourceName: input.sourceName,
       summary: input.summary,
     });
 

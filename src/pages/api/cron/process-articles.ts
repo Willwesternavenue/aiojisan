@@ -8,8 +8,9 @@ import { getAiProvider } from '@/services/ai';
 import { generateDraftForArticle } from '@/services/drafts/generate';
 import { createLogger } from '@/lib/logger';
 
-const DRAFT_THRESHOLD         = 7.9;
-const AUTO_PUBLISH_THRESHOLD  = 8.5;
+const AUTO_PUBLISH_THRESHOLD         = 8.5;
+const EXCEPTIONAL_PUBLISH_THRESHOLD  = 9.2;
+const DAILY_AUTO_PUBLISH_TARGET      = 5;
 
 const logger = createLogger('cron:process-articles');
 const BATCH_SIZE = 20;
@@ -22,6 +23,32 @@ export const POST: APIRoute = async ({ request }) => {
   return handler(request);
 };
 
+function getJstDayStart(date = new Date()): string {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Tokyo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+  const [year, month, day] = formatter.format(date).split('-').map(Number);
+  return new Date(Date.UTC(year, month - 1, day, -9, 0, 0)).toISOString();
+}
+
+async function getPublishedCountToday(db: ReturnType<typeof getAdminClient>): Promise<number> {
+  const { count, error } = await db
+    .from('generated_drafts')
+    .select('id', { count: 'exact', head: true })
+    .eq('status', 'published')
+    .gte('created_at', getJstDayStart());
+
+  if (error) {
+    logger.warn('Failed to count published drafts today', { error: error.message });
+    return 0;
+  }
+
+  return count ?? 0;
+}
+
 async function handler(request: Request): Promise<Response> {
   const authError = requireCronAuth(request);
   if (authError) return authError;
@@ -30,6 +57,7 @@ async function handler(request: Request): Promise<Response> {
 
   const db = getAdminClient();
   const ai = getAiProvider();
+  let publishedToday = await getPublishedCountToday(db);
 
   // LEFT JOINで未処理記事を取得（NOT IN方式はID数が多いとURL長制限に引っかかるため）
   const { data: candidates, error } = await db
@@ -102,27 +130,32 @@ async function handler(request: Request): Promise<Response> {
       } else {
         processed++;
 
-        // Auto-publish if score >= 8.5, auto-draft if >= 7.9
-        if (scores.overallScore >= AUTO_PUBLISH_THRESHOLD) {
+        const shouldAutoPublish =
+          scores.overallScore >= EXCEPTIONAL_PUBLISH_THRESHOLD ||
+          (
+            scores.overallScore >= AUTO_PUBLISH_THRESHOLD &&
+            publishedToday < DAILY_AUTO_PUBLISH_TARGET
+          );
+
+        if (shouldAutoPublish) {
           logger.info('Score threshold met, auto-publishing', {
             articleId: article.id,
             score: scores.overallScore,
+            publishedToday,
           });
           try {
             await generateDraftForArticle(article.id, { autoPublish: true });
+            publishedToday++;
           } catch (draftErr) {
             logger.warn('Auto-publish failed', { articleId: article.id, err: String(draftErr) });
           }
-        } else if (scores.overallScore >= DRAFT_THRESHOLD) {
-          logger.info('Score threshold met, auto-drafting', {
+        } else if (scores.overallScore >= AUTO_PUBLISH_THRESHOLD) {
+          logger.info('Auto-publish skipped by daily target', {
             articleId: article.id,
             score: scores.overallScore,
+            publishedToday,
+            dailyTarget: DAILY_AUTO_PUBLISH_TARGET,
           });
-          try {
-            await generateDraftForArticle(article.id, { autoPublish: false });
-          } catch (draftErr) {
-            logger.warn('Auto-draft failed', { articleId: article.id, err: String(draftErr) });
-          }
         }
       }
 
@@ -134,7 +167,7 @@ async function handler(request: Request): Promise<Response> {
     }
   }
 
-  const result = { ok: true, processed, failed, total: (articles ?? []).length };
+  const result = { ok: true, processed, failed, total: (articles ?? []).length, publishedToday };
   logger.info('Cron process-articles complete', result);
 
   return new Response(JSON.stringify(result), {

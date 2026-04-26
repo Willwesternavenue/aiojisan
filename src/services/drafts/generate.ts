@@ -12,44 +12,109 @@ import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('draft-generator');
 
-const PHYSICAL_AI_CATEGORY = {
-  name: 'フィジカルAI',
-  slug: 'physical-ai',
-  description: 'ロボット、身体性、自動運転、製造現場など、現実世界で動くAIに関する記事',
+type PillarCategory = {
+  name: string;
+  slug: string;
+  description: string;
+  keywords: string[];
 };
 
-const PHYSICAL_AI_KEYWORDS = [
-  'フィジカルai',
-  'physical ai',
-  'robot',
-  'robotics',
-  'robotic',
-  'humanoid',
-  'android',
-  'embodied ai',
-  'world model',
-  'spatial intelligence',
-  'ロボット',
-  'ロボティクス',
-  'ヒューマノイド',
-  '人型ロボット',
-  '身体性',
-  '具身化',
-  '実世界',
-  '自動運転',
-  'ドローン',
-  '製造現場',
-  '工場',
-  '倉庫',
+const PILLAR_CATEGORIES: PillarCategory[] = [
+  {
+    name: 'フィジカルAI',
+    slug: 'physical-ai',
+    description: 'ロボット、身体性、自動運転、製造現場など、現実世界で動くAIに関する記事',
+    keywords: [
+      'フィジカルai',
+      'physical ai',
+      'robot',
+      'robotics',
+      'robotic',
+      'humanoid',
+      'android',
+      'embodied ai',
+      'world model',
+      'spatial intelligence',
+      'ロボット',
+      'ロボティクス',
+      'ヒューマノイド',
+      '人型ロボット',
+      '身体性',
+      '具身化',
+      '実世界',
+      '自動運転',
+      'ドローン',
+      '製造現場',
+      '工場',
+      '倉庫',
+    ],
+  },
+  {
+    name: 'AI駆動開発',
+    slug: 'ai-driven-development',
+    description: 'AIエージェント、コーディング支援、開発プロセス、DevOps、PM/QAに関する記事',
+    keywords: [
+      'ai駆動開発',
+      'agentic engineering',
+      'vibe coding',
+      'coding agent',
+      'code agent',
+      'ai coding',
+      'aiエージェント',
+      'コーディングエージェント',
+      'claude code',
+      'codex',
+      'cursor',
+      'devops',
+      'ci/cd',
+      'pull request',
+      'github',
+      'qa',
+      'テスト自動化',
+      '開発プロセス',
+      'ソフトウェア開発',
+      'エンジニアリング',
+    ],
+  },
+  {
+    name: '生成AIニュース',
+    slug: 'generative-ai-news',
+    description: '生成AIのモデル、プロダクト、企業導入、政策、研究、産業動向に関する記事',
+    keywords: [
+      '生成ai',
+      'generative ai',
+      'llm',
+      'large language model',
+      'chatgpt',
+      'openai',
+      'anthropic',
+      'claude',
+      'gemini',
+      'google ai',
+      'microsoft ai',
+      '画像生成',
+      '動画生成',
+      'マルチモーダル',
+      'aiモデル',
+      '基盤モデル',
+      '企業導入',
+    ],
+  },
 ];
 
-function isPhysicalAiArticle(fields: Array<string | null | undefined>): boolean {
+function detectPillarCategories(fields: Array<string | null | undefined>): PillarCategory[] {
   const haystack = fields
     .filter(Boolean)
     .join('\n')
     .toLowerCase();
 
-  return PHYSICAL_AI_KEYWORDS.some(keyword => haystack.includes(keyword));
+  const matched = PILLAR_CATEGORIES.filter(category =>
+    category.keywords.some(keyword => haystack.includes(keyword)),
+  );
+
+  return matched.length > 0
+    ? matched
+    : [PILLAR_CATEGORIES[2]];
 }
 
 export async function generateDraftForArticle(
@@ -107,24 +172,27 @@ export async function generateDraftForArticle(
   const wpStatus = autoPublish ? 'publish' : 'draft';
   const categoryIds: number[] = [];
 
-  if (isPhysicalAiArticle([
+  const pillarCategories = detectPillarCategories([
     article.title,
     article.canonical_url,
     insights?.short_summary,
     insights?.long_summary,
     ...(insights?.topics ?? []),
     ...(insights?.tags ?? []),
-  ])) {
+  ]);
+
+  for (const category of pillarCategories) {
     try {
       const categoryId = await getOrCreateWordPressCategory(
-        PHYSICAL_AI_CATEGORY.name,
-        PHYSICAL_AI_CATEGORY.slug,
-        PHYSICAL_AI_CATEGORY.description,
+        category.name,
+        category.slug,
+        category.description,
       );
       categoryIds.push(categoryId);
     } catch (categoryErr) {
-      logger.warn('Physical AI category assignment failed', {
+      logger.warn('Pillar category assignment failed', {
         articleId,
+        category: category.slug,
         err: String(categoryErr),
       });
     }
@@ -170,6 +238,7 @@ export async function generateDraftForArticle(
       model: 'gpt-4o',
       auto_generated: true,
       auto_published: autoPublish,
+      pillarCategories: pillarCategories.map(category => category.slug),
     },
   });
 
