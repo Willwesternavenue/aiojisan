@@ -1,0 +1,118 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import { getSourceById } from '@/lib/supabase/queries';
+
+const { id } = Astro.params;
+
+if (!id) {
+  return Astro.redirect('/admin/sources');
+}
+
+const source = await getSourceById(id).catch(() => null);
+
+if (!source) {
+  return Astro.redirect('/admin/sources');
+}
+
+const tagsValue = source.tags.join(', ');
+---
+
+<AdminLayout title="ソースを編集" activeNav="sources">
+  <div class="max-w-2xl">
+    <form method="POST" action={`/api/admin/sources/${source.id}`} class="space-y-5">
+      <div class="bg-surface border border-border rounded-md p-6 space-y-5">
+
+        <div class="field">
+          <label for="name">ソース名 <span class="text-red-500">*</span></label>
+          <input
+            type="text"
+            id="name"
+            name="name"
+            required
+            value={source.name}
+            class="input"
+          />
+        </div>
+
+        <div class="field">
+          <label for="source_type">タイプ <span class="text-red-500">*</span></label>
+          <select id="source_type" name="source_type" required class="input">
+            <option value="rss" selected={source.source_type === 'rss'}>RSS</option>
+            <option value="html" selected={source.source_type === 'html'}>HTML fetch</option>
+            <option value="playwright" selected={source.source_type === 'playwright'}>Playwright</option>
+          </select>
+          <p class="hint">RSS が利用可能な場合は優先的に使用してください</p>
+        </div>
+
+        <div class="field">
+          <label for="base_url">ベースURL <span class="text-red-500">*</span></label>
+          <input
+            type="url"
+            id="base_url"
+            name="base_url"
+            required
+            value={source.base_url}
+            class="input"
+          />
+        </div>
+
+        <div class="field">
+          <label for="list_url">フィード / 一覧URL <span class="text-red-500">*</span></label>
+          <input
+            type="url"
+            id="list_url"
+            name="list_url"
+            required
+            value={source.list_url}
+            class="input"
+          />
+          <p class="hint">RSS の場合はフィードURL、HTML の場合は一覧ページURL</p>
+        </div>
+
+        <div class="field">
+          <label for="priority">優先度</label>
+          <input
+            type="number"
+            id="priority"
+            name="priority"
+            value={source.priority}
+            min="1"
+            max="10"
+            class="input w-24"
+          />
+          <p class="hint">1〜10。高いほど優先的に処理されます</p>
+        </div>
+
+        <div class="field">
+          <label for="tags">タグ（カンマ区切り）</label>
+          <input
+            type="text"
+            id="tags"
+            name="tags"
+            value={tagsValue}
+            placeholder="AI, 生成AI, スタートアップ"
+            class="input"
+          />
+        </div>
+
+        <div class="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="enabled"
+            name="enabled"
+            value="true"
+            checked={source.enabled}
+            class="rounded border-border"
+          />
+          <label for="enabled" class="text-sm text-text-primary cursor-pointer">有効にする</label>
+        </div>
+
+      </div>
+
+      <div class="flex gap-3">
+        <button type="submit" class="btn-primary">更新する</button>
+        <a href="/admin/sources" class="btn-secondary">キャンセル</a>
+      </div>
+    </form>
+  </div>
+</AdminLayout>

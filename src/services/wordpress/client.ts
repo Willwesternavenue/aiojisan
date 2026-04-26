@@ -42,6 +42,12 @@ interface WpMediaResponse {
   source_url: string;
 }
 
+interface WpCategoryResponse {
+  id: number;
+  name: string;
+  slug: string;
+}
+
 function getAuthHeader(): string {
   const env = getEnv();
   const credentials = `${env.WORDPRESS_USERNAME}:${env.WORDPRESS_APP_PASSWORD}`;
@@ -83,6 +89,7 @@ export async function createWordPressDraft(
   excerpt?: string,
   slug?: string,
   status: 'draft' | 'publish' = 'draft',
+  categories?: number[],
 ): Promise<{ id: number; editUrl: string }> {
   logger.info('Creating WordPress post', { title, slug, status });
 
@@ -94,6 +101,7 @@ export async function createWordPressDraft(
     status,
     excerpt,
     featured_media: PLACEHOLDER_MEDIA_ID,
+    ...(categories && categories.length > 0 ? { categories } : {}),
     ...(slug ? { slug } : {}),
   };
 
@@ -108,6 +116,32 @@ export async function createWordPressDraft(
   logger.info('Post created', { id: post.id, status, editUrl });
 
   return { id: post.id, editUrl };
+}
+
+export async function getOrCreateWordPressCategory(
+  name: string,
+  slug: string,
+  description?: string,
+): Promise<number> {
+  const existing = await wpFetch<WpCategoryResponse[]>(
+    `/categories?slug=${encodeURIComponent(slug)}&per_page=1`,
+  );
+
+  if (existing[0]) {
+    return existing[0].id;
+  }
+
+  const created = await wpFetch<WpCategoryResponse>('/categories', {
+    method: 'POST',
+    body: JSON.stringify({
+      name,
+      slug,
+      ...(description ? { description } : {}),
+    }),
+  });
+
+  logger.info('WordPress category created', { id: created.id, name, slug });
+  return created.id;
 }
 
 export async function updateWordPressDraft(

@@ -14,7 +14,7 @@ interface WpPost {
   content: { rendered: string };
   excerpt: { rendered: string };
   link: string;
-  categories: number[];
+  categories?: number[];
   _embedded?: {
     'wp:featuredmedia'?: Array<{ source_url: string; alt_text: string }>;
     'wp:term'?: Array<Array<{ id: number; name: string; slug: string }>>;
@@ -26,6 +26,7 @@ let post: WpPost | null = null;
 try {
   const res = await fetch(
     `${base}/wp-json/wp/v2/posts?slug=${encodeURIComponent(slug!)}&_embed=1&status=publish`,
+    { cache: 'no-store' },
   );
   if (res.ok) {
     const posts: WpPost[] = await res.json();
@@ -51,11 +52,74 @@ function stripHtml(html: string): string {
     .trim();
 }
 
+async function fetchRelatedPosts(currentPost: WpPost): Promise<WpPost[]> {
+  const seen = new Set<number>([currentPost.id]);
+  const related: WpPost[] = [];
+  const categoryIds = currentPost.categories ?? [];
+
+  async function fetchPosts(params: URLSearchParams): Promise<WpPost[]> {
+    try {
+      params.set('status', 'publish');
+      params.set('orderby', 'date');
+      params.set('order', 'desc');
+      params.set('_embed', '1');
+
+      const res = await fetch(`${base}/wp-json/wp/v2/posts?${params}`, {
+        cache: 'no-store',
+      });
+      if (!res.ok) return [];
+      return res.json();
+    } catch {
+      return [];
+    }
+  }
+
+  function addPosts(posts: WpPost[]) {
+    for (const candidate of posts) {
+      if (seen.has(candidate.id)) continue;
+      seen.add(candidate.id);
+      related.push(candidate);
+      if (related.length >= 4) break;
+    }
+  }
+
+  if (categoryIds.length > 0) {
+    addPosts(await fetchPosts(new URLSearchParams({
+      per_page: '8',
+      categories: categoryIds.join(','),
+      exclude: String(currentPost.id),
+    })));
+  }
+
+  if (related.length < 4) {
+    addPosts(await fetchPosts(new URLSearchParams({
+      per_page: '8',
+      exclude: Array.from(seen).join(','),
+    })));
+  }
+
+  return related;
+}
+
 const title = stripHtml(post.title.rendered);
 const excerpt = stripHtml(post.excerpt.rendered).slice(0, 160);
 const featuredImage = post._embedded?.['wp:featuredmedia']?.[0];
 const categories = post._embedded?.['wp:term']?.[0] ?? [];
 const primaryCategory = categories[0];
+const relatedPosts = await fetchRelatedPosts(post);
+const relatedArticles = relatedPosts.map(relatedPost => {
+  const relatedCategory = relatedPost._embedded?.['wp:term']?.[0]?.[0];
+  const relatedImage = relatedPost._embedded?.['wp:featuredmedia']?.[0];
+
+  return {
+    slug: relatedPost.slug,
+    title: stripHtml(relatedPost.title.rendered),
+    excerpt: stripHtml(relatedPost.excerpt.rendered),
+    publishedAt: relatedPost.date,
+    thumbnail: relatedImage?.source_url ?? null,
+    categoryName: relatedCategory?.name ?? 'AI分析',
+  };
+});
 const publishedAt = new Date(post.date).toLocaleDateString('ja-JP', {
   year: 'numeric',
   month: 'long',
@@ -150,6 +214,57 @@ const jsonLd = {
         元記事を読む →
       </a>
     </div>
+
+    <!-- Related articles -->
+    {relatedArticles.length > 0 && (
+      <section class="mt-12 pt-8 border-t border-border">
+        <div class="flex items-baseline justify-between mb-5">
+          <h2 class="text-lg font-semibold text-text-primary">関連記事</h2>
+          {primaryCategory && (
+            <a
+              href={`/articles?category=${primaryCategory.slug}`}
+              class="text-sm text-accent hover:underline"
+            >
+              {primaryCategory.name} の記事を見る →
+            </a>
+          )}
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {relatedArticles.map(article => (
+            <a
+              href={`/articles/${article.slug}`}
+              class="group border border-border rounded-lg overflow-hidden bg-surface hover:border-accent/40 transition-colors"
+            >
+              {article.thumbnail && (
+                <div class="aspect-video overflow-hidden bg-[#F0F0EE]">
+                  <img
+                    src={article.thumbnail}
+                    alt={article.title}
+                    class="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+                    loading="lazy"
+                  />
+                </div>
+              )}
+              <div class="p-4">
+                <div class="flex items-center gap-2 mb-2">
+                  <span class="text-xs text-accent font-medium">{article.categoryName}</span>
+                  <span class="text-xs text-text-muted">
+                    {new Date(article.publishedAt).toLocaleDateString('ja-JP')}
+                  </span>
+                </div>
+                <h3 class="text-sm font-semibold text-text-primary leading-snug group-hover:text-accent transition-colors mb-2">
+                  {article.title}
+                </h3>
+                <p class="text-xs text-text-secondary leading-relaxed line-clamp-2">
+                  {article.excerpt}
+                </p>
+              </div>
+            </a>
+          ))}
+        </div>
+      </section>
+    )}
 
   </article>
 </PublicLayout>

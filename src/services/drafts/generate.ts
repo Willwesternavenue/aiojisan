@@ -3,10 +3,54 @@
 import { getAdminClient } from '@/lib/supabase/server';
 import { getAiProvider } from '@/services/ai';
 import { getStyleChunksForDraft } from '@/services/rag/retrieval';
-import { createWordPressDraft, generateAndAttachFeaturedImage } from '@/services/wordpress/client';
+import {
+  createWordPressDraft,
+  generateAndAttachFeaturedImage,
+  getOrCreateWordPressCategory,
+} from '@/services/wordpress/client';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('draft-generator');
+
+const PHYSICAL_AI_CATEGORY = {
+  name: 'フィジカルAI',
+  slug: 'physical-ai',
+  description: 'ロボット、身体性、自動運転、製造現場など、現実世界で動くAIに関する記事',
+};
+
+const PHYSICAL_AI_KEYWORDS = [
+  'フィジカルai',
+  'physical ai',
+  'robot',
+  'robotics',
+  'robotic',
+  'humanoid',
+  'android',
+  'embodied ai',
+  'world model',
+  'spatial intelligence',
+  'ロボット',
+  'ロボティクス',
+  'ヒューマノイド',
+  '人型ロボット',
+  '身体性',
+  '具身化',
+  '実世界',
+  '自動運転',
+  'ドローン',
+  '製造現場',
+  '工場',
+  '倉庫',
+];
+
+function isPhysicalAiArticle(fields: Array<string | null | undefined>): boolean {
+  const haystack = fields
+    .filter(Boolean)
+    .join('\n')
+    .toLowerCase();
+
+  return PHYSICAL_AI_KEYWORDS.some(keyword => haystack.includes(keyword));
+}
 
 export async function generateDraftForArticle(
   articleId: string,
@@ -61,6 +105,30 @@ export async function generateDraftForArticle(
 
   const selectedTitle = draft.titleOptions[0];
   const wpStatus = autoPublish ? 'publish' : 'draft';
+  const categoryIds: number[] = [];
+
+  if (isPhysicalAiArticle([
+    article.title,
+    article.canonical_url,
+    insights?.short_summary,
+    insights?.long_summary,
+    ...(insights?.topics ?? []),
+    ...(insights?.tags ?? []),
+  ])) {
+    try {
+      const categoryId = await getOrCreateWordPressCategory(
+        PHYSICAL_AI_CATEGORY.name,
+        PHYSICAL_AI_CATEGORY.slug,
+        PHYSICAL_AI_CATEGORY.description,
+      );
+      categoryIds.push(categoryId);
+    } catch (categoryErr) {
+      logger.warn('Physical AI category assignment failed', {
+        articleId,
+        err: String(categoryErr),
+      });
+    }
+  }
 
   const { id: wpPostId } = await createWordPressDraft(
     selectedTitle,
@@ -68,6 +136,7 @@ export async function generateDraftForArticle(
     insights?.short_summary ?? undefined,
     draft.slug,
     wpStatus,
+    categoryIds,
   );
 
   // Generate and attach featured image for auto-published articles only
