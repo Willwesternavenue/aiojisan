@@ -13,6 +13,8 @@ const AUTO_PUBLISH_THRESHOLD         = 8.5;
 const EXCEPTIONAL_PUBLISH_THRESHOLD  = 9.2;
 const DAILY_AUTO_PUBLISH_TARGET      = 5;
 const DAILY_PHYSICAL_AI_TARGET       = 2;
+const CARRYOVER_LOOKBACK_HOURS       = 48;
+const CARRYOVER_CANDIDATE_LIMIT      = 50;
 
 const logger = createLogger('cron:process-articles');
 const BATCH_SIZE = 20;
@@ -40,6 +42,17 @@ function getJstDayStart(date = new Date()): string {
 type PublishStats = {
   total: number;
   byPillar: Record<PillarSlug, number>;
+};
+
+type EditorialScores = {
+  overallScore: number;
+  blogPostPotentialScore?: number | null;
+};
+
+type PublishDecision = {
+  shouldAutoPublish: boolean;
+  isExceptional: boolean;
+  physicalAiLimitReached: boolean;
 };
 
 async function getPublishStatsToday(db: ReturnType<typeof getAdminClient>): Promise<PublishStats> {
@@ -77,6 +90,181 @@ async function getPublishStatsToday(db: ReturnType<typeof getAdminClient>): Prom
   return stats;
 }
 
+function getCarryoverCutoff(date = new Date()): string {
+  return new Date(date.getTime() - CARRYOVER_LOOKBACK_HOURS * 60 * 60 * 1000).toISOString();
+}
+
+function getPillarCategories(fields: Array<string | null | undefined>) {
+  return detectPillarCategories(fields);
+}
+
+function getPublishDecision(
+  scores: EditorialScores,
+  pillarCategories: ReturnType<typeof detectPillarCategories>,
+  publishStats: PublishStats,
+): PublishDecision {
+  const isPhysicalAi = includesPhysicalAi(pillarCategories);
+  const isExceptional = scores.overallScore >= EXCEPTIONAL_PUBLISH_THRESHOLD;
+  const physicalAiLimitReached =
+    isPhysicalAi && publishStats.byPillar['physical-ai'] >= DAILY_PHYSICAL_AI_TARGET;
+
+  return {
+    isExceptional,
+    physicalAiLimitReached,
+    shouldAutoPublish:
+      !physicalAiLimitReached &&
+      (
+        isExceptional ||
+        (
+          scores.overallScore >= AUTO_PUBLISH_THRESHOLD &&
+          publishStats.total < DAILY_AUTO_PUBLISH_TARGET
+        )
+      ),
+  };
+}
+
+function incrementPublishStats(
+  publishStats: PublishStats,
+  pillarCategories: ReturnType<typeof detectPillarCategories>,
+): void {
+  publishStats.total++;
+  for (const category of pillarCategories) {
+    publishStats.byPillar[category.slug]++;
+  }
+}
+
+async function publishArticle(
+  articleId: string,
+  scores: EditorialScores,
+  pillarCategories: ReturnType<typeof detectPillarCategories>,
+  publishStats: PublishStats,
+  context: 'carryover' | 'new',
+): Promise<boolean> {
+  const result = await generateDraftForArticle(articleId, { autoPublish: true });
+  if (!result) {
+    logger.info('Auto-publish skipped because draft already exists', { articleId, context });
+    return false;
+  }
+
+  incrementPublishStats(publishStats, pillarCategories);
+  logger.info('Article auto-published', {
+    articleId,
+    context,
+    score: scores.overallScore,
+    publishStats,
+    pillarCategories: pillarCategories.map(category => category.slug),
+  });
+  return true;
+}
+
+async function publishCarryoverCandidates(
+  db: ReturnType<typeof getAdminClient>,
+  publishStats: PublishStats,
+): Promise<{ published: number; failed: number }> {
+  const { data, error } = await db
+    .from('articles')
+    .select(`
+      id,
+      title,
+      canonical_url,
+      created_at,
+      published_at,
+      sources(name),
+      article_ai_insights(
+        short_summary,
+        long_summary,
+        tags,
+        topics,
+        overall_score,
+        blog_post_potential_score
+      ),
+      article_actions(action_type),
+      generated_drafts(id)
+    `)
+    .gte('created_at', getCarryoverCutoff())
+    .order('published_at', { ascending: false })
+    .limit(CARRYOVER_CANDIDATE_LIMIT);
+
+  if (error) {
+    logger.warn('Failed to fetch carryover candidates', { error: error.message });
+    return { published: 0, failed: 0 };
+  }
+
+  const candidates = (data ?? [])
+    .filter((article: any) => {
+      const insights = Array.isArray(article.article_ai_insights)
+        ? article.article_ai_insights[0]
+        : article.article_ai_insights;
+      const actions = Array.isArray(article.article_actions) ? article.article_actions : [];
+      const alreadyDrafted = actions.some((action: any) => action.action_type === 'generate_blog_draft');
+      const hasDraft = Array.isArray(article.generated_drafts)
+        ? article.generated_drafts.length > 0
+        : Boolean(article.generated_drafts);
+      return Number(insights?.overall_score ?? 0) >= AUTO_PUBLISH_THRESHOLD && !alreadyDrafted && !hasDraft;
+    })
+    .sort((a: any, b: any) => {
+      const insightA = Array.isArray(a.article_ai_insights) ? a.article_ai_insights[0] : a.article_ai_insights;
+      const insightB = Array.isArray(b.article_ai_insights) ? b.article_ai_insights[0] : b.article_ai_insights;
+      const overallDiff = Number(insightB?.overall_score ?? 0) - Number(insightA?.overall_score ?? 0);
+      if (overallDiff !== 0) return overallDiff;
+
+      const blogDiff =
+        Number(insightB?.blog_post_potential_score ?? 0) -
+        Number(insightA?.blog_post_potential_score ?? 0);
+      if (blogDiff !== 0) return blogDiff;
+
+      return new Date(b.published_at ?? 0).getTime() - new Date(a.published_at ?? 0).getTime();
+    });
+
+  let published = 0;
+  let failed = 0;
+
+  for (const article of candidates) {
+    const insights = Array.isArray(article.article_ai_insights)
+      ? article.article_ai_insights[0]
+      : article.article_ai_insights;
+    const sourceName = (article.sources as unknown as { name: string } | null)?.name ?? 'Unknown';
+    const scores = {
+      overallScore: Number(insights?.overall_score ?? 0),
+      blogPostPotentialScore: insights?.blog_post_potential_score,
+    };
+    const pillarCategories = getPillarCategories([
+      article.title,
+      article.canonical_url,
+      sourceName,
+      insights?.short_summary,
+      insights?.long_summary,
+      ...(insights?.topics ?? []),
+      ...(insights?.tags ?? []),
+    ]);
+    const decision = getPublishDecision(scores, pillarCategories, publishStats);
+
+    if (!decision.shouldAutoPublish) {
+      logger.info('Carryover candidate skipped by daily balance policy', {
+        articleId: article.id,
+        score: scores.overallScore,
+        publishStats,
+        dailyTarget: DAILY_AUTO_PUBLISH_TARGET,
+        dailyPhysicalAiTarget: DAILY_PHYSICAL_AI_TARGET,
+        pillarCategories: pillarCategories.map(category => category.slug),
+        physicalAiLimitReached: decision.physicalAiLimitReached,
+        isExceptional: decision.isExceptional,
+      });
+      continue;
+    }
+
+    try {
+      const didPublish = await publishArticle(article.id, scores, pillarCategories, publishStats, 'carryover');
+      if (didPublish) published++;
+    } catch (err) {
+      logger.warn('Carryover auto-publish failed', { articleId: article.id, err: String(err) });
+      failed++;
+    }
+  }
+
+  return { published, failed };
+}
+
 async function handler(request: Request): Promise<Response> {
   const authError = requireCronAuth(request);
   if (authError) return authError;
@@ -86,6 +274,7 @@ async function handler(request: Request): Promise<Response> {
   const db = getAdminClient();
   const ai = getAiProvider();
   const publishStats = await getPublishStatsToday(db);
+  const carryover = await publishCarryoverCandidates(db, publishStats);
 
   // LEFT JOINで未処理記事を取得（NOT IN方式はID数が多いとURL長制限に引っかかるため）
   const { data: candidates, error } = await db
@@ -187,7 +376,7 @@ async function handler(request: Request): Promise<Response> {
       } else {
         processed++;
 
-        const pillarCategories = detectPillarCategories([
+        const pillarCategories = getPillarCategories([
           article.title,
           article.canonical_url,
           sourceName,
@@ -196,32 +385,18 @@ async function handler(request: Request): Promise<Response> {
           ...(summary.topics ?? []),
           ...(summary.tags ?? []),
         ]);
-        const isPhysicalAi = includesPhysicalAi(pillarCategories);
-        const isExceptional = scores.overallScore >= EXCEPTIONAL_PUBLISH_THRESHOLD;
-        const physicalAiLimitReached =
-          isPhysicalAi && publishStats.byPillar['physical-ai'] >= DAILY_PHYSICAL_AI_TARGET;
-        const shouldAutoPublish =
-          isExceptional ||
-          (
-            scores.overallScore >= AUTO_PUBLISH_THRESHOLD &&
-            publishStats.total < DAILY_AUTO_PUBLISH_TARGET &&
-            !physicalAiLimitReached
-          );
+        const decision = getPublishDecision(scores, pillarCategories, publishStats);
 
-        if (shouldAutoPublish) {
+        if (decision.shouldAutoPublish) {
           logger.info('Score threshold met, auto-publishing', {
             articleId: article.id,
             score: scores.overallScore,
             publishStats,
             pillarCategories: pillarCategories.map(category => category.slug),
-            isExceptional,
+            isExceptional: decision.isExceptional,
           });
           try {
-            await generateDraftForArticle(article.id, { autoPublish: true });
-            publishStats.total++;
-            for (const category of pillarCategories) {
-              publishStats.byPillar[category.slug]++;
-            }
+            await publishArticle(article.id, scores, pillarCategories, publishStats, 'new');
           } catch (draftErr) {
             logger.warn('Auto-publish failed', { articleId: article.id, err: String(draftErr) });
           }
@@ -233,7 +408,8 @@ async function handler(request: Request): Promise<Response> {
             dailyTarget: DAILY_AUTO_PUBLISH_TARGET,
             dailyPhysicalAiTarget: DAILY_PHYSICAL_AI_TARGET,
             pillarCategories: pillarCategories.map(category => category.slug),
-            physicalAiLimitReached,
+            physicalAiLimitReached: decision.physicalAiLimitReached,
+            isExceptional: decision.isExceptional,
           });
         }
       }
@@ -246,7 +422,7 @@ async function handler(request: Request): Promise<Response> {
     }
   }
 
-  const result = { ok: true, processed, failed, total: (articles ?? []).length, publishStats };
+  const result = { ok: true, processed, failed, total: (articles ?? []).length, carryover, publishStats };
   logger.info('Cron process-articles complete', result);
 
   return new Response(JSON.stringify(result), {

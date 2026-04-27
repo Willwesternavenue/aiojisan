@@ -1,11 +1,18 @@
 import type { APIRoute } from 'astro';
 
+type SitemapEntry = {
+  url: string;
+  priority: string;
+  changefreq: string;
+  lastmod?: string;
+};
+
 export const GET: APIRoute = async ({ request }) => {
   const origin = new URL(request.url).origin;
   const base = import.meta.env.WORDPRESS_BASE_URL?.replace(/\/$/, '') ?? '';
 
   // Static pages
-  const staticPages = [
+  const staticPages: SitemapEntry[] = [
     { url: `${origin}/`, priority: '1.0', changefreq: 'daily' },
     { url: `${origin}/articles`, priority: '0.9', changefreq: 'daily' },
     { url: `${origin}/about`, priority: '0.5', changefreq: 'monthly' },
@@ -30,7 +37,7 @@ export const GET: APIRoute = async ({ request }) => {
     // Return sitemap with static pages only if WP is unreachable
   }
 
-  const articleEntries = wpPosts.map(p => ({
+  const articleEntries: SitemapEntry[] = wpPosts.map(p => ({
     url: `${origin}/articles/${p.slug}`,
     lastmod: p.modified ? p.modified.slice(0, 10) : undefined,
     priority: '0.8',

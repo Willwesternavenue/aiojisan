@@ -9,13 +9,17 @@ const stats = await getDashboardStats().catch(() => ({
 
 // Recent source runs
 const db = getAdminClient();
-const { data: recentRunsRaw } = await db
-  .from('source_runs')
-  .select('*, sources(name)')
-  .order('started_at', { ascending: false })
-  .limit(10)
-  .then((r: any) => r)
-  .catch(() => ({ data: [] }));
+let recentRunsRaw: unknown[] = [];
+try {
+  const { data } = await db
+    .from('source_runs')
+    .select('*, sources(name)')
+    .order('started_at', { ascending: false })
+    .limit(10);
+  recentRunsRaw = data ?? [];
+} catch {
+  recentRunsRaw = [];
+}
 
 type RunRow = {
   id: string;
