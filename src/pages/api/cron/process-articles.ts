@@ -6,14 +6,17 @@ import { requireCronAuth } from '@/lib/auth';
 import { getAdminClient } from '@/lib/supabase/server';
 import { getAiProvider } from '@/services/ai';
 import { generateDraftForArticle } from '@/services/drafts/generate';
+import { detectPillarCategories, includesPhysicalAi, type PillarSlug } from '@/services/editorial/pillars';
 import { createLogger } from '@/lib/logger';
 
 const AUTO_PUBLISH_THRESHOLD         = 8.5;
 const EXCEPTIONAL_PUBLISH_THRESHOLD  = 9.2;
 const DAILY_AUTO_PUBLISH_TARGET      = 5;
+const DAILY_PHYSICAL_AI_TARGET       = 2;
 
 const logger = createLogger('cron:process-articles');
 const BATCH_SIZE = 20;
+const MAX_ARTICLES_PER_SOURCE_PER_BATCH = 3;
 
 export const GET: APIRoute = async ({ request }) => {
   return handler(request);
@@ -34,19 +37,44 @@ function getJstDayStart(date = new Date()): string {
   return new Date(Date.UTC(year, month - 1, day, -9, 0, 0)).toISOString();
 }
 
-async function getPublishedCountToday(db: ReturnType<typeof getAdminClient>): Promise<number> {
-  const { count, error } = await db
+type PublishStats = {
+  total: number;
+  byPillar: Record<PillarSlug, number>;
+};
+
+async function getPublishStatsToday(db: ReturnType<typeof getAdminClient>): Promise<PublishStats> {
+  const stats: PublishStats = {
+    total: 0,
+    byPillar: {
+      'physical-ai': 0,
+      'ai-driven-development': 0,
+      'generative-ai-news': 0,
+    },
+  };
+
+  const { data, error } = await db
     .from('generated_drafts')
-    .select('id', { count: 'exact', head: true })
+    .select('generation_metadata')
     .eq('status', 'published')
     .gte('created_at', getJstDayStart());
 
   if (error) {
-    logger.warn('Failed to count published drafts today', { error: error.message });
-    return 0;
+    logger.warn('Failed to fetch published draft stats today', { error: error.message });
+    return stats;
   }
 
-  return count ?? 0;
+  stats.total = data?.length ?? 0;
+
+  for (const row of data ?? []) {
+    const metadata = row.generation_metadata as { pillarCategories?: string[] } | null;
+    for (const pillar of metadata?.pillarCategories ?? []) {
+      if (pillar in stats.byPillar) {
+        stats.byPillar[pillar as PillarSlug]++;
+      }
+    }
+  }
+
+  return stats;
 }
 
 async function handler(request: Request): Promise<Response> {
@@ -57,12 +85,12 @@ async function handler(request: Request): Promise<Response> {
 
   const db = getAdminClient();
   const ai = getAiProvider();
-  let publishedToday = await getPublishedCountToday(db);
+  const publishStats = await getPublishStatsToday(db);
 
   // LEFT JOINで未処理記事を取得（NOT IN方式はID数が多いとURL長制限に引っかかるため）
   const { data: candidates, error } = await db
     .from('articles')
-    .select('id, title, canonical_url, extracted_text, published_at, sources(name), article_ai_insights(article_id)')
+    .select('id, source_id, title, canonical_url, extracted_text, published_at, sources(name, priority), article_ai_insights(article_id)')
     .order('fetched_at', { ascending: false })
     .limit(BATCH_SIZE * 10); // 多めに取得してクライアント側でフィルタ
 
@@ -74,13 +102,42 @@ async function handler(request: Request): Promise<Response> {
     });
   }
 
-  // insightsがない記事だけ抽出してバッチサイズに絞る
-  const articles = (candidates ?? [])
+  // insightsがない記事だけ抽出し、1ソースで処理枠を埋めないようにラウンドロビンで選ぶ
+  const unprocessed = (candidates ?? [])
     .filter((a: any) => {
       const ins = a.article_ai_insights;
       return !ins || (Array.isArray(ins) && ins.length === 0) || ins === null;
-    })
-    .slice(0, BATCH_SIZE);
+    });
+
+  const bySource = new Map<string, any[]>();
+  for (const article of unprocessed) {
+    const sourceId = article.source_id ?? 'unknown';
+    const bucket = bySource.get(sourceId) ?? [];
+    if (bucket.length < MAX_ARTICLES_PER_SOURCE_PER_BATCH) {
+      bucket.push(article);
+    }
+    bySource.set(sourceId, bucket);
+  }
+
+  const sourceBuckets = [...bySource.values()]
+    .sort((a, b) => {
+      const priorityA = Number((a[0].sources as { priority?: number } | null)?.priority ?? 0);
+      const priorityB = Number((b[0].sources as { priority?: number } | null)?.priority ?? 0);
+      return priorityB - priorityA;
+    });
+
+  const articles: any[] = [];
+  for (let i = 0; articles.length < BATCH_SIZE; i++) {
+    let added = false;
+    for (const bucket of sourceBuckets) {
+      const next = bucket[i];
+      if (!next) continue;
+      articles.push(next);
+      added = true;
+      if (articles.length >= BATCH_SIZE) break;
+    }
+    if (!added) break;
+  }
 
   let processed = 0;
   let failed = 0;
@@ -130,31 +187,53 @@ async function handler(request: Request): Promise<Response> {
       } else {
         processed++;
 
+        const pillarCategories = detectPillarCategories([
+          article.title,
+          article.canonical_url,
+          sourceName,
+          summary.shortSummary,
+          summary.longSummary,
+          ...(summary.topics ?? []),
+          ...(summary.tags ?? []),
+        ]);
+        const isPhysicalAi = includesPhysicalAi(pillarCategories);
+        const isExceptional = scores.overallScore >= EXCEPTIONAL_PUBLISH_THRESHOLD;
+        const physicalAiLimitReached =
+          isPhysicalAi && publishStats.byPillar['physical-ai'] >= DAILY_PHYSICAL_AI_TARGET;
         const shouldAutoPublish =
-          scores.overallScore >= EXCEPTIONAL_PUBLISH_THRESHOLD ||
+          isExceptional ||
           (
             scores.overallScore >= AUTO_PUBLISH_THRESHOLD &&
-            publishedToday < DAILY_AUTO_PUBLISH_TARGET
+            publishStats.total < DAILY_AUTO_PUBLISH_TARGET &&
+            !physicalAiLimitReached
           );
 
         if (shouldAutoPublish) {
           logger.info('Score threshold met, auto-publishing', {
             articleId: article.id,
             score: scores.overallScore,
-            publishedToday,
+            publishStats,
+            pillarCategories: pillarCategories.map(category => category.slug),
+            isExceptional,
           });
           try {
             await generateDraftForArticle(article.id, { autoPublish: true });
-            publishedToday++;
+            publishStats.total++;
+            for (const category of pillarCategories) {
+              publishStats.byPillar[category.slug]++;
+            }
           } catch (draftErr) {
             logger.warn('Auto-publish failed', { articleId: article.id, err: String(draftErr) });
           }
         } else if (scores.overallScore >= AUTO_PUBLISH_THRESHOLD) {
-          logger.info('Auto-publish skipped by daily target', {
+          logger.info('Auto-publish skipped by daily balance policy', {
             articleId: article.id,
             score: scores.overallScore,
-            publishedToday,
+            publishStats,
             dailyTarget: DAILY_AUTO_PUBLISH_TARGET,
+            dailyPhysicalAiTarget: DAILY_PHYSICAL_AI_TARGET,
+            pillarCategories: pillarCategories.map(category => category.slug),
+            physicalAiLimitReached,
           });
         }
       }
@@ -167,7 +246,7 @@ async function handler(request: Request): Promise<Response> {
     }
   }
 
-  const result = { ok: true, processed, failed, total: (articles ?? []).length, publishedToday };
+  const result = { ok: true, processed, failed, total: (articles ?? []).length, publishStats };
   logger.info('Cron process-articles complete', result);
 
   return new Response(JSON.stringify(result), {
