@@ -1,6 +1,32 @@
 ---
 import PublicLayout from '@/layouts/PublicLayout.astro';
 
+const EDITORIAL_CATEGORIES = [
+  {
+    slug: 'generative-ai-news',
+    label: '生成AIニュース',
+    description: 'モデル、プロダクト、研究、企業導入、政策などAI全般の動き',
+  },
+  {
+    slug: 'ai-driven-development',
+    label: 'AI駆動開発',
+    description: 'コーディングエージェント、開発プロセス、DevOps、PM/QA',
+  },
+  {
+    slug: 'physical-ai',
+    label: 'フィジカルAI',
+    description: 'ロボット、ヒューマノイド、自動運転、製造・物流現場のAI',
+  },
+] as const;
+
+type EditorialCategory = (typeof EDITORIAL_CATEGORIES)[number];
+
+type WpTerm = {
+  id: number;
+  name: string;
+  slug: string;
+};
+
 type WpPost = {
   id: number;
   slug: string;
@@ -8,18 +34,29 @@ type WpPost = {
   excerpt: { rendered: string };
   date: string;
   link: string;
+  categories: number[];
   featured_media: number;
   _embedded?: {
     'wp:featuredmedia'?: { source_url: string; alt_text: string }[];
-    'wp:term'?: { id: number; name: string; slug: string }[][];
+    'wp:term'?: WpTerm[][];
   };
 };
 
-async function fetchWpPosts(perPage = 10): Promise<WpPost[]> {
+type ArticleCard = {
+  slug: string;
+  title: string;
+  excerpt: string;
+  publishedAt: string;
+  link: string;
+  thumbnail: string | null;
+  category: EditorialCategory;
+};
+
+async function fetchWpPosts(perPage = 24): Promise<WpPost[]> {
   const base = import.meta.env.WORDPRESS_BASE_URL?.replace(/\/$/, '') ?? '';
   try {
     const res = await fetch(
-      `${base}/wp-json/wp/v2/posts?per_page=${perPage}&status=publish&_embed=wp:featuredmedia,wp:term&_fields=id,slug,title,excerpt,date,link,featured_media,categories,_links`
+      `${base}/wp-json/wp/v2/posts?per_page=${perPage}&status=publish&_embed=wp:featuredmedia,wp:term&_fields=id,slug,title,excerpt,date,link,featured_media,categories,_embedded,_links`
     );
     if (!res.ok) return [];
     return res.json();
@@ -34,19 +71,36 @@ function stripHtml(html: string): string {
   ).trim();
 }
 
-const wpPosts = await fetchWpPosts(10);
+function getEditorialCategory(post: WpPost): EditorialCategory {
+  const terms = post._embedded?.['wp:term']?.flat() ?? [];
+  const matchedTerm = terms.find(term =>
+    EDITORIAL_CATEGORIES.some(category => category.slug === term.slug)
+  );
 
-const latestArticles = wpPosts.map(p => ({
+  return EDITORIAL_CATEGORIES.find(category => category.slug === matchedTerm?.slug)
+    ?? EDITORIAL_CATEGORIES[0];
+}
+
+const wpPosts = await fetchWpPosts();
+
+const latestArticles: ArticleCard[] = wpPosts.map(p => ({
   slug: p.slug,
   title: stripHtml(p.title.rendered),
   excerpt: stripHtml(p.excerpt.rendered),
   publishedAt: p.date,
   link: p.link,
   thumbnail: p._embedded?.['wp:featuredmedia']?.[0]?.source_url ?? null,
-  category: p._embedded?.['wp:term']?.[0]?.[0]?.name ?? 'AI分析',
+  category: getEditorialCategory(p),
 }));
 
-const featuredArticles = latestArticles.slice(0, 4);
+const articlesByCategory = EDITORIAL_CATEGORIES.map(category => ({
+  category,
+  articles: latestArticles.filter(article => article.category.slug === category.slug),
+})).filter(group => group.articles.length > 0);
+
+const featuredArticles = EDITORIAL_CATEGORIES
+  .map(category => latestArticles.find(article => article.category.slug === category.slug))
+  .filter((article): article is ArticleCard => Boolean(article));
 ---
 
 <PublicLayout title="AIおじさんのひとりごと">
@@ -55,11 +109,11 @@ const featuredArticles = latestArticles.slice(0, 4);
     <div class="max-w-2xl">
       <p class="text-sm text-accent font-medium mb-3 uppercase tracking-wide">AIおじさんのひとりごと</p>
       <h1 class="text-4xl font-semibold text-text-primary leading-tight mb-4">
-        実務目線で読み解く<br />AI駆動開発の最前線
+        実務目線で読み解く<br />AIニュースの判断軸
       </h1>
       <p class="text-lg text-text-secondary leading-relaxed">
-        AIニュースをただ伝えるのではなく、「なぜ重要か」「実務にどう響くか」を
-        自分なりの視点で書いています。
+        生成AI、AI駆動開発、フィジカルAIを横断して、「なぜ重要か」
+        「実務にどう響くか」を自分なりの視点で書いています。
       </p>
     </div>
   </section>
@@ -72,10 +126,18 @@ const featuredArticles = latestArticles.slice(0, 4);
   <!-- Featured articles -->
   {featuredArticles.length > 0 && (
     <section class="max-w-admin mx-auto px-6 py-12">
-      <h2 class="text-xs font-medium text-text-muted uppercase tracking-widest mb-6">
-        注目の記事
-      </h2>
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+      <div class="flex items-end justify-between gap-4 mb-6">
+        <div>
+          <h2 class="text-xs font-medium text-text-muted uppercase tracking-widest">
+            注目の記事
+          </h2>
+          <p class="text-sm text-text-secondary mt-2">
+            ひとつのテーマに寄りすぎないよう、主要カテゴリから1本ずつ選んでいます。
+          </p>
+        </div>
+        <a href="/articles" class="hidden sm:inline text-sm text-accent hover:underline">記事一覧 →</a>
+      </div>
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
         {featuredArticles.map(article => (
           <a href={`/articles/${article.slug}`}
             class="group border border-border rounded-lg overflow-hidden hover:border-accent/40 transition-colors bg-surface">
@@ -92,8 +154,9 @@ const featuredArticles = latestArticles.slice(0, 4);
             )}
             <div class="p-5">
               <span class="text-xs text-accent font-medium uppercase tracking-wide">
-                {article.category}
+                {article.category.label}
               </span>
+              <p class="text-xs text-text-muted mt-1 line-clamp-1">{article.category.description}</p>
               <h3 class="text-base font-semibold text-text-primary mt-2 mb-2 leading-snug group-hover:text-accent transition-colors">
                 {article.title}
               </h3>
@@ -122,35 +185,52 @@ const featuredArticles = latestArticles.slice(0, 4);
         <p class="text-text-muted text-sm">記事を準備中です</p>
       </div>
     ) : (
-      <div class="space-y-0 divide-y divide-border">
-        {latestArticles.map(article => (
-          <a href={`/articles/${article.slug}`}
-            class="group flex items-start gap-4 py-5 hover:bg-[#F5F5F3] -mx-3 px-3 rounded transition-colors">
-            {article.thumbnail && (
-              <div class="w-20 h-14 flex-shrink-0 rounded overflow-hidden bg-[#F0F0EE]">
-                <img
-                  src={article.thumbnail}
-                  alt={article.title}
-                  class="w-full h-full object-cover"
-                  loading="lazy"
-                />
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {articlesByCategory.map(({ category, articles }) => (
+          <section class="min-w-0">
+            <div class="mb-4">
+              <div class="flex items-baseline justify-between gap-3">
+                <h3 class="text-lg font-semibold text-text-primary">{category.label}</h3>
+                <a
+                  href={`/articles?category=${encodeURIComponent(category.slug)}`}
+                  class="text-xs text-accent hover:underline whitespace-nowrap"
+                >
+                  もっと見る
+                </a>
               </div>
-            )}
-            <div class="flex-1 min-w-0">
-              <div class="flex items-center gap-2 mb-1.5">
-                <span class="text-xs text-accent">{article.category}</span>
-                <span class="text-xs text-text-muted">
-                  {new Date(article.publishedAt).toLocaleDateString('ja-JP')}
-                </span>
-              </div>
-              <h3 class="text-base font-medium text-text-primary leading-snug group-hover:text-accent transition-colors mb-1.5">
-                {article.title}
-              </h3>
-              <p class="text-sm text-text-secondary leading-relaxed line-clamp-2">
-                {article.excerpt}
-              </p>
+              <p class="text-xs text-text-muted mt-1 leading-relaxed">{category.description}</p>
             </div>
-          </a>
+            <div class="space-y-0 divide-y divide-border">
+              {articles.slice(0, 4).map(article => (
+                <a href={`/articles/${article.slug}`}
+                  class="group block py-4 hover:bg-[#F5F5F3] -mx-3 px-3 rounded transition-colors">
+                  <div class="flex items-start gap-3">
+                    {article.thumbnail && (
+                      <div class="w-20 h-14 flex-shrink-0 rounded overflow-hidden bg-[#F0F0EE]">
+                        <img
+                          src={article.thumbnail}
+                          alt={article.title}
+                          class="w-full h-full object-cover"
+                          loading="lazy"
+                        />
+                      </div>
+                    )}
+                    <div class="flex-1 min-w-0">
+                      <p class="text-xs text-text-muted mb-1.5">
+                        {new Date(article.publishedAt).toLocaleDateString('ja-JP')}
+                      </p>
+                      <h4 class="text-sm font-medium text-text-primary leading-snug group-hover:text-accent transition-colors mb-1.5">
+                        {article.title}
+                      </h4>
+                      <p class="text-xs text-text-secondary leading-relaxed line-clamp-2">
+                        {article.excerpt}
+                      </p>
+                    </div>
+                  </div>
+                </a>
+              ))}
+            </div>
+          </section>
         ))}
       </div>
     )}

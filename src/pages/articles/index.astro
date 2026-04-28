@@ -1,6 +1,24 @@
 ---
 import PublicLayout from '@/layouts/PublicLayout.astro';
 
+const EDITORIAL_CATEGORIES = [
+  {
+    slug: 'generative-ai-news',
+    label: '生成AIニュース',
+    description: 'モデル、プロダクト、研究、企業導入、政策などAI全般の動き',
+  },
+  {
+    slug: 'ai-driven-development',
+    label: 'AI駆動開発',
+    description: 'コーディングエージェント、開発プロセス、DevOps、PM/QA',
+  },
+  {
+    slug: 'physical-ai',
+    label: 'フィジカルAI',
+    description: 'ロボット、ヒューマノイド、自動運転、製造・物流現場のAI',
+  },
+] as const;
+
 type WpCategory = {
   id: number;
   name: string;
@@ -74,26 +92,38 @@ const [allCategories, rawPosts] = await Promise.all([
 // カテゴリIDでのルックアップマップ
 const categoryMap = new Map(allCategories.map(c => [c.id, c]));
 
-// 記事にカテゴリ情報を付与
-const articles = rawPosts.map(p => ({
-  slug: p.slug,
-  title: stripHtml(p.title.rendered),
-  excerpt: stripHtml(p.excerpt.rendered),
-  publishedAt: p.date,
-  link: p.link,
-  thumbnail: p._embedded?.['wp:featuredmedia']?.[0]?.source_url ?? null,
-  categoryIds: p.categories,
-  categoryName: p.categories.length > 0
-    ? (categoryMap.get(p.categories[0])?.name ?? 'その他')
-    : 'その他',
-  categorySlug: p.categories.length > 0
-    ? (categoryMap.get(p.categories[0])?.slug ?? '')
-    : '',
-}));
+function getEditorialCategory(categoryIds: number[]) {
+  const categorySlugs = categoryIds
+    .map(id => categoryMap.get(id)?.slug)
+    .filter(Boolean);
 
-// カテゴリフィルター: 記事のあるカテゴリだけ表示
-const usedCategoryIds = new Set(rawPosts.flatMap(p => p.categories));
-const categories = allCategories.filter(c => usedCategoryIds.has(c.id));
+  return EDITORIAL_CATEGORIES.find(category => categorySlugs.includes(category.slug))
+    ?? EDITORIAL_CATEGORIES[0];
+}
+
+// 記事にカテゴリ情報を付与
+const articles = rawPosts.map(p => {
+  const category = getEditorialCategory(p.categories);
+
+  return {
+    slug: p.slug,
+    title: stripHtml(p.title.rendered),
+    excerpt: stripHtml(p.excerpt.rendered),
+    publishedAt: p.date,
+    link: p.link,
+    thumbnail: p._embedded?.['wp:featuredmedia']?.[0]?.source_url ?? null,
+    categoryName: category.label,
+    categorySlug: category.slug,
+  };
+});
+
+// カテゴリフィルター: サイトの3本柱だけを固定順で表示
+const categories = EDITORIAL_CATEGORIES
+  .map(category => ({
+    ...category,
+    count: articles.filter(article => article.categorySlug === category.slug).length,
+  }))
+  .filter(category => category.count > 0);
 
 // フィルター適用
 const filtered = selectedSlug
@@ -104,13 +134,13 @@ const selectedCategory = categories.find(c => c.slug === selectedSlug);
 ---
 
 <PublicLayout
-  title={selectedCategory ? `${selectedCategory.name} の記事` : '記事一覧'}
+  title={selectedCategory ? `${selectedCategory.label} の記事` : '記事一覧'}
   description="AIおじさんのひとりごと — 記事一覧"
 >
   <div class="max-w-admin mx-auto px-6 py-12">
     <div class="flex items-baseline justify-between mb-8">
       <h1 class="text-2xl font-semibold text-text-primary">
-        {selectedCategory ? selectedCategory.name : '記事一覧'}
+        {selectedCategory ? selectedCategory.label : '記事一覧'}
       </h1>
       <p class="text-sm text-text-muted">{filtered.length} 件</p>
     </div>
@@ -129,8 +159,9 @@ const selectedCategory = categories.find(c => c.slug === selectedSlug);
           <a
             href={`/articles?category=${encodeURIComponent(cat.slug)}`}
             class={`category-pill ${selectedSlug === cat.slug ? 'category-pill-active' : ''}`}
+            title={cat.description}
           >
-            {cat.name}
+            {cat.label}
             <span class="ml-1 text-xs opacity-60">({cat.count})</span>
           </a>
         ))}
