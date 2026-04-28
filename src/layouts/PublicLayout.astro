@@ -22,6 +22,7 @@ const fullTitle = title === siteTitle ? title : `${title} — ${siteTitle}`;
 const siteUrl = 'https://www.aiojisan.com';
 const pageUrl = canonical ?? (siteUrl + Astro.url.pathname);
 const xProfileUrl = 'https://x.com/aiojisanblog';
+const feedUrl = `${siteUrl}/feed.xml`;
 ---
 
 <!DOCTYPE html>
@@ -43,6 +44,7 @@ const xProfileUrl = 'https://x.com/aiojisanblog';
   <meta name="description" content={description} />
   <meta name="robots" content="index,follow" />
   <link rel="canonical" href={pageUrl} />
+  <link rel="alternate" type="application/rss+xml" title={`${siteTitle} RSS`} href={feedUrl} />
 
   <!-- OG -->
   <meta property="og:title"       content={fullTitle} />
@@ -106,6 +108,7 @@ const xProfileUrl = 'https://x.com/aiojisanblog';
       <p class="text-xs text-text-muted">© 2024 AIおじさんのひとりごと</p>
       <div class="flex gap-4">
         <a href="/about" class="text-xs text-text-muted hover:text-text-secondary transition-colors">About</a>
+        <a href="/feed.xml" class="text-xs text-text-muted hover:text-text-secondary transition-colors">RSS</a>
         <a href={xProfileUrl} target="_blank" rel="noopener noreferrer"
           class="text-xs text-text-muted hover:text-text-secondary transition-colors">𝕏</a>
       </div>
