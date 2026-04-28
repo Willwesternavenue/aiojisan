@@ -101,9 +101,27 @@ const articlesByCategory = EDITORIAL_CATEGORIES.map(category => ({
 const featuredArticles = EDITORIAL_CATEGORIES
   .map(category => latestArticles.find(article => article.category.slug === category.slug))
   .filter((article): article is ArticleCard => Boolean(article));
+
+const homeJsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'WebSite',
+  name: 'AIおじさんのひとりごと',
+  alternateName: 'AIおじさん',
+  url: 'https://www.aiojisan.com/',
+  description: '生成AI、AI駆動開発、フィジカルAIを実務目線で読み解くメディア',
+  publisher: {
+    '@type': 'Organization',
+    name: 'AIおじさんのひとりごと',
+    url: 'https://www.aiojisan.com/',
+  },
+};
 ---
 
-<PublicLayout title="AIおじさんのひとりごと">
+<PublicLayout
+  title="AIおじさんのひとりごと"
+  description="AIおじさんのひとりごと。生成AI、AI駆動開発、フィジカルAIを実務目線で読み解くニュース分析メディアです。"
+  jsonLd={homeJsonLd}
+>
   <!-- Hero -->
   <section class="max-w-admin mx-auto px-6 pt-16 pb-12">
     <div class="max-w-2xl">
@@ -131,9 +149,6 @@ const featuredArticles = EDITORIAL_CATEGORIES
           <h2 class="text-xs font-medium text-text-muted uppercase tracking-widest">
             注目の記事
           </h2>
-          <p class="text-sm text-text-secondary mt-2">
-            ひとつのテーマに寄りすぎないよう、主要カテゴリから1本ずつ選んでいます。
-          </p>
         </div>
         <a href="/articles" class="hidden sm:inline text-sm text-accent hover:underline">記事一覧 →</a>
       </div>
