@@ -56,10 +56,13 @@
 - 生成失敗・WordPress 更新失敗は 500 を返す。生成成功後にのみ上書きするため、途中失敗で記事が壊れることはない
 - `wordpress_post_id` 不在・記事不在は明示的にエラーを返す
 
-## テスト方針
+## 検証方針
 
-- `regenerateDraftForArticle` の単体テスト: WordPress クライアントと AI プロバイダをモックし、(a) 既存タイトルが維持され body のみ更新されること、(b) `wordpress_post_id` 不在時にエラーになること、(c) `generated_drafts` と `article_actions` が更新されることを検証
-- 抽出ヘルパー `buildBlogDraftForArticle` を生成・再生成が共有しても既存生成フローが壊れないことを確認
+本コードベースにはテスト基盤が存在しない（vitest/jest なし、テストファイルなし、`astro check` の型チェックのみ）。既存慣例に合わせ、本機能も単体テストは追加せず、以下で検証する:
+
+- `npx astro check` で型安全性を確認（抽出ヘルパーの共有で既存生成フローの型が壊れていないこと、新 API・サービスの型整合）
+- dev サーバー（`npm run dev`、middleware は DEV で認証バイパス）で管理画面「下書き履歴」を開き、`wordpress_post_id` を持つ記事の「再生成」ボタンを実押下。本文が更新され、タイトル・slug・URL が不変であること、成功バナーが出ることを目視確認
+- WordPress 側で対象記事の本文が差し替わり、post ID・slug が変わっていないことを確認
 
 ## スコープ外（YAGNI）
 
