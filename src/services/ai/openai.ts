@@ -160,6 +160,7 @@ export const openAiProvider: AiProvider = {
       slug,
       outline: raw.outline,
       body: raw.body,
+      model: DRAFT_MODEL,
     };
   },
 

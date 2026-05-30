@@ -32,9 +32,16 @@ export async function generateBlogDraftWithClaude(input: BlogDraftInput): Promis
 
   const message = await client.messages.create({
     model: DRAFT_MODEL,
-    max_tokens: 4096,
+    max_tokens: 8192,
     messages: [{ role: 'user', content: prompt }],
   });
+
+  if (message.stop_reason === 'max_tokens') {
+    logger.warn('Claude draft hit max_tokens — output likely truncated, consider raising the limit', {
+      title: input.articleTitle,
+      model: DRAFT_MODEL,
+    });
+  }
 
   const content = message.content[0];
   if (content.type !== 'text') throw new Error('Claude returned non-text content');
@@ -62,5 +69,6 @@ export async function generateBlogDraftWithClaude(input: BlogDraftInput): Promis
     slug,
     outline: raw.outline,
     body: raw.body,
+    model: DRAFT_MODEL,
   };
 }

@@ -42,6 +42,7 @@ export interface BlogDraftOutput {
   slug: string;
   outline: string;
   body: string;
+  model: string;  // Actual model used to generate the draft
 }
 
 export interface XPostDraftOutput {

@@ -191,7 +191,7 @@ export async function generateDraftForArticle(
     generation_metadata: {
       titleOptions: draft.titleOptions,
       styleChunksUsed: styleChunks.length,
-      model: 'gpt-4o',
+      model: draft.model,
       auto_generated: true,
       auto_published: autoPublish,
       pillarCategories: pillarCategories.map(category => category.slug),
