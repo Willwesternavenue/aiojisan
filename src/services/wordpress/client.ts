@@ -153,7 +153,7 @@ export async function updateWordPressDraft(
 
   await wpFetch<WpPostResponse>(`/posts/${postId}`, {
     method: 'POST',
-    body: JSON.stringify({ title, content: body }),
+    body: JSON.stringify({ title, content: markdownToHtml(body) }),
   });
 }
 

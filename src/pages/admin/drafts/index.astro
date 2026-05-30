@@ -3,9 +3,15 @@ import AdminLayout from '@/layouts/AdminLayout.astro';
 import { getRecentDrafts } from '@/lib/supabase/queries';
 
 const drafts = await getRecentDrafts(30).catch(() => []);
+const regenerated = Astro.url.searchParams.get('regenerated') === '1';
 ---
 
 <AdminLayout title="下書き履歴" activeNav="drafts">
+  {regenerated && (
+    <div class="mb-4 px-4 py-2 rounded-md bg-score-highBg text-score-high text-sm">
+      記事を再生成し、WordPress本文を更新しました。
+    </div>
+  )}
   <div class="bg-surface border border-border rounded-md divide-y divide-border">
     {drafts.length === 0 && (
       <div class="px-5 py-8 text-center">
@@ -43,6 +49,17 @@ const drafts = await getRecentDrafts(30).catch(() => []);
             >
               WPで開く ↗
             </a>
+          )}
+          {draft.wordpress_post_id && draft.article_id && (
+            <form method="POST" action="/api/admin/drafts/regenerate">
+              <input type="hidden" name="article_id" value={draft.article_id} />
+              <button
+                type="submit"
+                class="text-xs text-accent border border-border rounded px-2 py-0.5 hover:bg-[#F0F0EE] transition-colors"
+              >
+                再生成
+              </button>
+            </form>
           )}
         </div>
       </div>
