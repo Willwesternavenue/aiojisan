@@ -16,7 +16,7 @@ export async function regenerateDraftForArticle(
   // 1. Most recent stored draft for this article (gives us the WP post + title)
   const { data: draftRow, error: draftErr } = await db
     .from('generated_drafts')
-    .select('id, draft_title, wordpress_post_id')
+    .select('id, draft_title, wordpress_post_id, generation_metadata')
     .eq('article_id', articleId)
     .order('created_at', { ascending: false })
     .limit(1)
@@ -55,6 +55,7 @@ export async function regenerateDraftForArticle(
       draft_body: draft.body,
       draft_outline: draft.outline,
       generation_metadata: {
+        ...((draftRow.generation_metadata as Record<string, unknown>) ?? {}),
         styleChunksUsed,
         model: draft.model,
         regenerated: true,
