@@ -2,7 +2,7 @@
 
 import { getAdminClient } from '@/lib/supabase/server';
 import { getAiProvider } from '@/services/ai';
-import { getStyleChunksForDraft } from '@/services/rag/retrieval';
+import { buildBlogDraftForArticle } from './content';
 import {
   createWordPressDraft,
   generateAndAttachFeaturedImage,
@@ -84,20 +84,7 @@ export async function generateDraftForArticle(
 
   logger.info('Generating draft', { articleId, title: article.title, autoPublish });
 
-  const styleChunks = await getStyleChunksForDraft(
-    article.title,
-    insights?.topics ?? [],
-  );
-
-  const draft = await ai.generateBlogDraft({
-    articleTitle: article.title,
-    articleUrl: article.canonical_url,
-    articleText: article.extracted_text ?? '',
-    shortSummary: insights?.short_summary ?? '',
-    longSummary: insights?.long_summary ?? '',
-    topics: insights?.topics ?? [],
-    styleChunks,
-  });
+  const { draft, styleChunksUsed } = await buildBlogDraftForArticle(article);
 
   const selectedTitle = draft.titleOptions[0];
   const wpStatus = autoPublish ? 'publish' : 'draft';
@@ -190,7 +177,7 @@ export async function generateDraftForArticle(
     status: autoPublish ? 'published' : 'sent_to_wordpress',
     generation_metadata: {
       titleOptions: draft.titleOptions,
-      styleChunksUsed: styleChunks.length,
+      styleChunksUsed,
       model: draft.model,
       auto_generated: true,
       auto_published: autoPublish,
