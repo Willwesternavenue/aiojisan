@@ -4,15 +4,17 @@ import { getAiProvider } from '@/services/ai';
 import { getStyleChunksForDraft } from '@/services/rag/retrieval';
 import type { BlogDraftOutput } from '@/types/ai';
 
+interface ArticleInsights {
+  short_summary: string | null;
+  long_summary: string | null;
+  topics: string[] | null;
+}
+
 export interface ArticleForDraft {
   title: string;
   canonical_url: string;
   extracted_text: string | null;
-  article_ai_insights: {
-    short_summary: string | null;
-    long_summary: string | null;
-    topics: string[] | null;
-  } | null;
+  article_ai_insights: ArticleInsights | ArticleInsights[] | null;
 }
 
 /**
@@ -24,7 +26,9 @@ export async function buildBlogDraftForArticle(
   article: ArticleForDraft,
 ): Promise<{ draft: BlogDraftOutput; styleChunksUsed: number }> {
   const ai = getAiProvider();
-  const insights = article.article_ai_insights;
+  const insights = Array.isArray(article.article_ai_insights)
+    ? article.article_ai_insights[0] ?? null
+    : article.article_ai_insights;
   const styleChunks = await getStyleChunksForDraft(article.title, insights?.topics ?? []);
   const draft = await ai.generateBlogDraft({
     articleTitle: article.title,
