@@ -12,7 +12,8 @@ export type ArticleActionType =
   | 'mark_reviewed'
   | 'generate_blog_draft'
   | 'generate_x_post'
-  | 'publish_to_wordpress';
+  | 'publish_to_wordpress'
+  | 'regenerate_blog_draft';
 
 export type DraftStatus = 'generated' | 'sent_to_wordpress' | 'published';
 
