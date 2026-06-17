@@ -40,6 +40,7 @@ type WpPost = {
 };
 
 const base = import.meta.env.WORDPRESS_BASE_URL?.replace(/\/$/, '') ?? '';
+const PAGE_SIZE = 50;
 
 async function fetchCategories(): Promise<WpCategory[]> {
   try {
@@ -51,10 +52,14 @@ async function fetchCategories(): Promise<WpCategory[]> {
   }
 }
 
-async function fetchPosts(categoryId?: number): Promise<WpPost[]> {
+async function fetchPostsPage(
+  page: number,
+  categoryId?: number,
+): Promise<{ posts: WpPost[]; total: number; totalPages: number }> {
   try {
     const params = new URLSearchParams({
-      per_page: '50',
+      per_page: String(PAGE_SIZE),
+      page: String(page),
       status: 'publish',
       _embed: 'wp:featuredmedia',
       orderby: 'date',
@@ -63,10 +68,13 @@ async function fetchPosts(categoryId?: number): Promise<WpPost[]> {
     });
     if (categoryId) params.set('categories', String(categoryId));
     const res = await fetch(`${base}/wp-json/wp/v2/posts?${params}`);
-    if (!res.ok) return [];
-    return res.json();
+    if (!res.ok) return { posts: [], total: 0, totalPages: 1 };
+    const posts = (await res.json()) as WpPost[];
+    const total = Number(res.headers.get('X-WP-Total') ?? '0');
+    const totalPages = Number(res.headers.get('X-WP-TotalPages') ?? '1');
+    return { posts, total, totalPages };
   } catch {
-    return [];
+    return { posts: [], total: 0, totalPages: 1 };
   }
 }
 
@@ -83,14 +91,18 @@ function stripHtml(html: string): string {
 }
 
 const selectedSlug = Astro.url.searchParams.get('category') ?? '';
+const pageParam = Number(Astro.url.searchParams.get('page') ?? '1');
+const page = Number.isFinite(pageParam) && pageParam >= 1 ? Math.floor(pageParam) : 1;
 
-const [allCategories, rawPosts] = await Promise.all([
-  fetchCategories(),
-  fetchPosts(undefined),
-]);
-
-// カテゴリIDでのルックアップマップ
+const allCategories = await fetchCategories();
 const categoryMap = new Map(allCategories.map(c => [c.id, c]));
+const selectedCategoryId = selectedSlug
+  ? allCategories.find(c => c.slug === selectedSlug)?.id
+  : undefined;
+
+const { posts: rawPosts, total, totalPages } = await fetchPostsPage(page, selectedCategoryId);
+// When a category is selected, also fetch the unfiltered total for the "すべて" pill.
+const allTotal = selectedCategoryId ? (await fetchPostsPage(1)).total : total;
 
 function getEditorialCategory(categoryIds: number[]) {
   const categorySlugs = categoryIds
@@ -101,10 +113,8 @@ function getEditorialCategory(categoryIds: number[]) {
     ?? EDITORIAL_CATEGORIES[0];
 }
 
-// 記事にカテゴリ情報を付与
 const articles = rawPosts.map(p => {
   const category = getEditorialCategory(p.categories);
-
   return {
     slug: p.slug,
     title: stripHtml(p.title.rendered),
@@ -117,32 +127,43 @@ const articles = rawPosts.map(p => {
   };
 });
 
-// カテゴリフィルター: サイトの3本柱だけを固定順で表示
+// カテゴリピル: 3本柱の全件カウント(WPカテゴリのcount)を固定順で表示
 const categories = EDITORIAL_CATEGORIES
   .map(category => ({
     ...category,
-    count: articles.filter(article => article.categorySlug === category.slug).length,
+    count: allCategories.find(c => c.slug === category.slug)?.count ?? 0,
   }))
   .filter(category => category.count > 0);
 
-// フィルター適用
-const filtered = selectedSlug
-  ? articles.filter(a => a.categorySlug === selectedSlug)
-  : articles;
-
 const selectedCategory = categories.find(c => c.slug === selectedSlug);
+
+// ページネーション用URL（categoryを維持、pageは2以上のときだけ付与）
+function hrefFor(p: number): string {
+  const params = new URLSearchParams();
+  if (selectedSlug) params.set('category', selectedSlug);
+  if (p > 1) params.set('page', String(p));
+  const s = params.toString();
+  return '/articles' + (s ? `?${s}` : '');
+}
+
+const hasPrev = page > 1;
+const hasNext = page < totalPages;
+const prevHref = hrefFor(page - 1);
+const nextHref = hrefFor(page + 1);
+const canonical = `https://www.aiojisan.com${hrefFor(page)}`;
 ---
 
 <PublicLayout
   title={selectedCategory ? `${selectedCategory.label} の記事` : '記事一覧'}
   description="AIおじさんのひとりごと — 記事一覧"
+  canonical={canonical}
 >
   <div class="max-w-admin mx-auto px-6 py-12">
     <div class="flex items-baseline justify-between mb-8">
       <h1 class="text-2xl font-semibold text-text-primary">
         {selectedCategory ? selectedCategory.label : '記事一覧'}
       </h1>
-      <p class="text-sm text-text-muted">{filtered.length} 件</p>
+      <p class="text-sm text-text-muted">{total} 件</p>
     </div>
 
     <!-- カテゴリフィルター -->
@@ -153,7 +174,7 @@ const selectedCategory = categories.find(c => c.slug === selectedSlug);
           class={`category-pill ${!selectedSlug ? 'category-pill-active' : ''}`}
         >
           すべて
-          <span class="ml-1 text-xs opacity-60">({articles.length})</span>
+          <span class="ml-1 text-xs opacity-60">({allTotal})</span>
         </a>
         {categories.map(cat => (
           <a
@@ -169,13 +190,13 @@ const selectedCategory = categories.find(c => c.slug === selectedSlug);
     )}
 
     <!-- 記事リスト -->
-    {filtered.length === 0 ? (
+    {articles.length === 0 ? (
       <div class="py-20 text-center">
         <p class="text-text-muted">記事を準備中です</p>
       </div>
     ) : (
       <div class="space-y-0 divide-y divide-border">
-        {filtered.map(article => (
+        {articles.map(article => (
           <a
             href={`/articles/${article.slug}`}
             class="group flex items-start gap-4 py-5 hover:bg-[#F5F5F3] -mx-3 px-3 rounded transition-colors"
@@ -202,6 +223,23 @@ const selectedCategory = categories.find(c => c.slug === selectedSlug);
           </a>
         ))}
       </div>
+    )}
+
+    <!-- ページネーション -->
+    {totalPages > 1 && (
+      <nav class="mt-10 flex items-center justify-center gap-4 text-sm">
+        {hasPrev ? (
+          <a href={prevHref} class="border border-border rounded px-4 py-2 text-accent hover:bg-[#F5F5F3] transition-colors">← 前へ</a>
+        ) : (
+          <span class="border border-border rounded px-4 py-2 text-text-muted opacity-40">← 前へ</span>
+        )}
+        <span class="text-text-muted">{page} / {totalPages}</span>
+        {hasNext ? (
+          <a href={nextHref} class="border border-border rounded px-4 py-2 text-accent hover:bg-[#F5F5F3] transition-colors">次へ →</a>
+        ) : (
+          <span class="border border-border rounded px-4 py-2 text-text-muted opacity-40">次へ →</span>
+        )}
+      </nav>
     )}
   </div>
 </PublicLayout>
