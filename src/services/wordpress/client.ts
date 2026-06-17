@@ -276,7 +276,6 @@ export async function listPublishedPostsWithPlaceholderImage(): Promise<Placehol
         `/posts?status=publish&per_page=100&_fields=id,slug,featured_media,title,excerpt&page=${page}`,
       );
     } catch (err) {
-      // WordPress returns 400 (rest_post_invalid_page_number) when paging past the end
       const msg = String(err);
       // WordPress returns 400 rest_post_invalid_page_number when paging past the end
       if (msg.includes('invalid_page_number') || msg.includes('WordPress API error 400')) break;
