@@ -230,3 +230,58 @@ export async function generateAndAttachFeaturedImage(
 
   logger.info('Featured image attached', { postId, mediaId: media.id });
 }
+
+export interface PlaceholderPost {
+  id: number;
+  title: string;
+  summary: string;
+  slug: string;
+}
+
+interface WpListPost {
+  id: number;
+  slug: string;
+  featured_media: number;
+  title: { rendered: string };
+  excerpt: { rendered: string };
+}
+
+function stripHtml(html: string): string {
+  return html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/**
+ * List published posts that still have the placeholder featured image
+ * (i.e. image generation never succeeded for them).
+ */
+export async function listPublishedPostsWithPlaceholderImage(): Promise<PlaceholderPost[]> {
+  const result: PlaceholderPost[] = [];
+  let page = 1;
+  while (true) {
+    let batch: WpListPost[];
+    try {
+      batch = await wpFetch<WpListPost[]>(
+        `/posts?status=publish&per_page=100&_fields=id,slug,featured_media,title,excerpt&page=${page}`,
+      );
+    } catch (err) {
+      // WordPress returns 400 (rest_post_invalid_page_number) when paging past the end
+      const msg = String(err);
+      if (msg.includes('invalid_page_number') || msg.includes('error 400')) break;
+      throw err;
+    }
+    if (batch.length === 0) break;
+    for (const p of batch) {
+      if (p.featured_media === PLACEHOLDER_MEDIA_ID) {
+        result.push({
+          id: p.id,
+          title: stripHtml(p.title?.rendered ?? ''),
+          summary: stripHtml(p.excerpt?.rendered ?? ''),
+          slug: p.slug,
+        });
+      }
+    }
+    if (batch.length < 100) break;
+    page++;
+  }
+  return result;
+}
