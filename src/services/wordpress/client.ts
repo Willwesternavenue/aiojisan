@@ -246,8 +246,20 @@ interface WpListPost {
   excerpt: { rendered: string };
 }
 
+function decodeEntities(text: string): string {
+  return text
+    .replace(/&#(\d+);/g, (_, d) => String.fromCodePoint(Number(d)))
+    .replace(/&#x([0-9a-fA-F]+);/g, (_, h) => String.fromCodePoint(parseInt(h, 16)))
+    .replace(/&nbsp;/g, ' ')
+    .replace(/&quot;/g, '"')
+    .replace(/&apos;/g, "'")
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&'); // keep last so it doesn't double-decode
+}
+
 function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  return decodeEntities(html.replace(/<[^>]*>/g, '')).replace(/\s+/g, ' ').trim();
 }
 
 /**
@@ -266,7 +278,8 @@ export async function listPublishedPostsWithPlaceholderImage(): Promise<Placehol
     } catch (err) {
       // WordPress returns 400 (rest_post_invalid_page_number) when paging past the end
       const msg = String(err);
-      if (msg.includes('invalid_page_number') || msg.includes('error 400')) break;
+      // WordPress returns 400 rest_post_invalid_page_number when paging past the end
+      if (msg.includes('invalid_page_number') || msg.includes('WordPress API error 400')) break;
       throw err;
     }
     if (batch.length === 0) break;
