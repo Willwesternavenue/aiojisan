@@ -213,16 +213,40 @@ export async function articleExistsByHash(hash: string): Promise<boolean> {
 
 // ── Drafts ───────────────────────────────────────────────────────────────────
 
-export async function getRecentDrafts(limit = 20) {
-  const db = getAdminClient();
-  const { data, error } = await db
-    .from('generated_drafts')
-    .select('*, articles(title, canonical_url)')
-    .order('created_at', { ascending: false })
-    .limit(limit);
+export interface DraftListRow {
+  id: string;
+  article_id: string;
+  draft_title: string;
+  status: GeneratedDraft['status'];
+  wordpress_post_id: number | null;
+  created_at: string;
+  articles: Pick<Article, 'title' | 'canonical_url'> | null;
+}
 
-  if (error) throw new Error(`getRecentDrafts: ${error.message}`);
-  return data as (GeneratedDraft & { articles: Pick<Article, 'title' | 'canonical_url'> })[];
+// Paginated drafts list. Selects only the columns the list renders — notably
+// NOT draft_body/draft_outline, which are large and unused here.
+export async function getDraftsPage(
+  page = 1,
+  pageSize = 50,
+): Promise<{ rows: DraftListRow[]; total: number }> {
+  const db = getAdminClient();
+  const safePage = Math.max(1, page);
+  const from = (safePage - 1) * pageSize;
+  const to = from + pageSize - 1;
+
+  const { data, error, count } = await db
+    .from('generated_drafts')
+    .select(
+      'id, article_id, draft_title, status, wordpress_post_id, created_at, articles(title, canonical_url)',
+      { count: 'exact' },
+    )
+    .order('created_at', { ascending: false })
+    .range(from, to);
+
+  if (error) throw new Error(`getDraftsPage: ${error.message}`);
+  // Supabase infers the to-one `articles` join as an array; at runtime it is a
+  // single object (as the rest of the app relies on). Cast through unknown.
+  return { rows: (data ?? []) as unknown as DraftListRow[], total: count ?? 0 };
 }
 
 // ── Dashboard stats ──────────────────────────────────────────────────────────

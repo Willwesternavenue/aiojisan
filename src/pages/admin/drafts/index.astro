@@ -1,8 +1,20 @@
 ---
 import AdminLayout from '@/layouts/AdminLayout.astro';
-import { getRecentDrafts } from '@/lib/supabase/queries';
+import { getDraftsPage } from '@/lib/supabase/queries';
 
-const drafts = await getRecentDrafts(500).catch(() => []);
+const PAGE_SIZE = 50;
+const pageParam = Number(Astro.url.searchParams.get('page') ?? '1');
+const page = Number.isFinite(pageParam) && pageParam >= 1 ? Math.floor(pageParam) : 1;
+
+const { rows: drafts, total } = await getDraftsPage(page, PAGE_SIZE).catch(() => ({ rows: [], total: 0 }));
+const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+const start = total === 0 ? 0 : (page - 1) * PAGE_SIZE + 1;
+const end = (page - 1) * PAGE_SIZE + drafts.length;
+const hasPrev = page > 1;
+const hasNext = page < totalPages;
+const prevHref = `?page=${page - 1}`;
+const nextHref = `?page=${page + 1}`;
+
 const regenerated = Astro.url.searchParams.get('regenerated') === '1';
 const imgDone = Astro.url.searchParams.get('img_done');
 const imgFail = Astro.url.searchParams.get('img_fail');
@@ -34,16 +46,28 @@ const showImgResult = imgDone !== null;
     </form>
   </div>
 
-  <div class="mb-3 flex items-center gap-3">
+  <div class="mb-3 flex items-center justify-between gap-3 flex-wrap">
     <input
       id="draft-search"
       type="search"
-      placeholder="タイトル・元記事・URLで絞り込み"
+      placeholder="このページ内を絞り込み（タイトル・元記事・URL）"
       class="w-full max-w-md px-3 py-1.5 text-sm border border-border rounded-md bg-surface text-text-primary focus:outline-none focus:border-accent"
     />
-    <span class="text-xs text-text-muted whitespace-nowrap">
-      全 {drafts.length} 件 / <span id="draft-count">{drafts.length}</span> 件表示
-    </span>
+    <div class="flex items-center gap-3 text-xs text-text-muted whitespace-nowrap">
+      <span>全 {total} 件 ・ {start}–{end} 件目（{page} / {totalPages} ページ）</span>
+      <div class="flex items-center gap-1">
+        {hasPrev ? (
+          <a href={prevHref} class="border border-border rounded px-2 py-0.5 text-accent hover:bg-[#F0F0EE] transition-colors">← 前</a>
+        ) : (
+          <span class="border border-border rounded px-2 py-0.5 opacity-40">← 前</span>
+        )}
+        {hasNext ? (
+          <a href={nextHref} class="border border-border rounded px-2 py-0.5 text-accent hover:bg-[#F0F0EE] transition-colors">次 →</a>
+        ) : (
+          <span class="border border-border rounded px-2 py-0.5 opacity-40">次 →</span>
+        )}
+      </div>
+    </div>
   </div>
 
   <div id="draft-list" class="bg-surface border border-border rounded-md divide-y divide-border">
@@ -105,6 +129,22 @@ const showImgResult = imgDone !== null;
       <p class="text-sm text-text-muted">該当する下書きがありません</p>
     </div>
   </div>
+
+  {totalPages > 1 && (
+    <div class="mt-4 flex items-center justify-center gap-3 text-xs">
+      {hasPrev ? (
+        <a href={prevHref} class="border border-border rounded px-3 py-1 text-accent hover:bg-[#F0F0EE] transition-colors">← 前の50件</a>
+      ) : (
+        <span class="border border-border rounded px-3 py-1 opacity-40">← 前の50件</span>
+      )}
+      <span class="text-text-muted">{page} / {totalPages}</span>
+      {hasNext ? (
+        <a href={nextHref} class="border border-border rounded px-3 py-1 text-accent hover:bg-[#F0F0EE] transition-colors">次の50件 →</a>
+      ) : (
+        <span class="border border-border rounded px-3 py-1 opacity-40">次の50件 →</span>
+      )}
+    </div>
+  )}
 
   <script is:inline>
     (function () {
