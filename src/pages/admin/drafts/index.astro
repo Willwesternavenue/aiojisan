@@ -4,6 +4,10 @@ import { getRecentDrafts } from '@/lib/supabase/queries';
 
 const drafts = await getRecentDrafts(500).catch(() => []);
 const regenerated = Astro.url.searchParams.get('regenerated') === '1';
+const imgDone = Astro.url.searchParams.get('img_done');
+const imgFail = Astro.url.searchParams.get('img_fail');
+const imgLeft = Astro.url.searchParams.get('img_left');
+const showImgResult = imgDone !== null;
 ---
 
 <AdminLayout title="下書き履歴" activeNav="drafts">
@@ -12,6 +16,23 @@ const regenerated = Astro.url.searchParams.get('regenerated') === '1';
       記事を再生成し、WordPress本文を更新しました。
     </div>
   )}
+
+  {showImgResult && (
+    <div class="mb-4 px-4 py-2 rounded-md bg-score-highBg text-score-high text-sm">
+      画像を {imgDone} 件生成しました（失敗 {imgFail} ／ 残り {imgLeft}）。{Number(imgLeft) > 0 && ' もう一度押すと続きを処理します。'}
+    </div>
+  )}
+
+  <div class="mb-3">
+    <form method="POST" action="/api/admin/images/backfill">
+      <button
+        type="submit"
+        class="text-xs text-accent border border-border rounded px-3 py-1.5 hover:bg-[#F0F0EE] transition-colors"
+      >
+        画像が無い記事に一括生成（最大10件）
+      </button>
+    </form>
+  </div>
 
   <div class="mb-3 flex items-center gap-3">
     <input
