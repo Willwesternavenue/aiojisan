@@ -19,6 +19,10 @@ const logger = createLogger('wordpress');
 // Placeholder featured image used until a real image is generated
 const PLACEHOLDER_MEDIA_ID = 125;
 
+// Featured-image model: Gemini 3.1 Flash Image (Nano Banana 2) — much faster
+// and cheaper than the Pro image model (~13s vs ~22s/image).
+const IMAGE_MODEL = 'gemini-3.1-flash-image';
+
 interface WpPostPayload {
   title: string;
   content: string;
@@ -188,7 +192,7 @@ export async function generateAndAttachFeaturedImage(
     `スタイル：明るい配色のフラットイラスト、白い背景、モダンなテクノロジーモチーフ。日本語テキスト使用可。顔なし、ロゴなし。`;
 
   const imageResponse = await ai.models.generateContent({
-    model: 'gemini-3-pro-image-preview',
+    model: IMAGE_MODEL,
     contents: imagePrompt,
     config: { responseModalities: ['IMAGE', 'TEXT'] },
   });
@@ -196,7 +200,7 @@ export async function generateAndAttachFeaturedImage(
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const parts: any[] = (imageResponse as any).candidates?.[0]?.content?.parts ?? [];
   const imgPart = parts.find((p: any) => p.inlineData);
-  if (!imgPart?.inlineData?.data) throw new Error('gemini-3-pro-image-preview returned no image data');
+  if (!imgPart?.inlineData?.data) throw new Error(`${IMAGE_MODEL} returned no image data`);
 
   const imageBuffer = Buffer.from(imgPart.inlineData.data, 'base64');
 
