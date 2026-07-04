@@ -32,6 +32,7 @@ interface WpPostPayload {
   tags?: number[];
   featured_media?: number;
   meta?: Record<string, unknown>;
+  date_gmt?: string;
 }
 
 interface WpPostResponse {
@@ -94,8 +95,9 @@ export async function createWordPressDraft(
   slug?: string,
   status: 'draft' | 'publish' = 'draft',
   categories?: number[],
+  publishDate?: string,
 ): Promise<{ id: number; editUrl: string }> {
-  logger.info('Creating WordPress post', { title, slug, status });
+  logger.info('Creating WordPress post', { title, slug, status, publishDate });
 
   const htmlBody = markdownToHtml(body);
 
@@ -107,6 +109,8 @@ export async function createWordPressDraft(
     featured_media: PLACEHOLDER_MEDIA_ID,
     ...(categories && categories.length > 0 ? { categories } : {}),
     ...(slug ? { slug } : {}),
+    // Backdate the post (WordPress publishes a past-dated post at that date)
+    ...(publishDate ? { date_gmt: new Date(publishDate).toISOString().slice(0, 19) } : {}),
   };
 
   const post = await wpFetch<WpPostResponse>('/posts', {
