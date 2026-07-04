@@ -8,6 +8,28 @@ const logger = createLogger('anthropic');
 
 const DRAFT_MODEL = 'claude-sonnet-4-6';
 
+// Structured-output tool: forcing tool use makes Claude return a validated
+// object (SDK gives us `.input` already parsed) instead of free-text JSON,
+// eliminating the escaping bugs that broke naive JSON.parse on long bodies.
+const DRAFT_TOOL: Anthropic.Tool = {
+  name: 'submit_blog_draft',
+  description: 'ブログ下書きを提出する。titleOptionsは3案、outlineとbodyはマークダウン。',
+  input_schema: {
+    type: 'object',
+    properties: {
+      titleOptions: {
+        type: 'array',
+        items: { type: 'string' },
+        description: 'タイトル案（3つ）',
+      },
+      slug: { type: 'string', description: '英語・小文字・ハイフン区切りのURLスラッグ' },
+      outline: { type: 'string', description: 'マークダウンのアウトライン' },
+      body: { type: 'string', description: '本文全文（マークダウン形式）' },
+    },
+    required: ['titleOptions', 'slug', 'outline', 'body'],
+  },
+};
+
 function fillTemplate(template: string, vars: Record<string, string>): string {
   return template.replace(/\{(\w+)\}/g, (_, key) => vars[key] ?? `{${key}}`);
 }
@@ -33,6 +55,8 @@ export async function generateBlogDraftWithClaude(input: BlogDraftInput): Promis
   const message = await client.messages.create({
     model: DRAFT_MODEL,
     max_tokens: 8192,
+    tools: [DRAFT_TOOL],
+    tool_choice: { type: 'tool', name: 'submit_blog_draft' },
     messages: [{ role: 'user', content: prompt }],
   });
 
@@ -43,19 +67,13 @@ export async function generateBlogDraftWithClaude(input: BlogDraftInput): Promis
     });
   }
 
-  const content = message.content[0];
-  if (content.type !== 'text') throw new Error('Claude returned non-text content');
-
-  // Strip markdown code fences if present
-  const jsonText = content.text.replace(/^```(?:json)?\n?/, '').replace(/\n?```$/, '').trim();
-
-  let raw: { titleOptions: [string, string, string]; slug: string; outline: string; body: string };
-  try {
-    raw = JSON.parse(jsonText);
-  } catch {
-    logger.error('Failed to parse Claude JSON response', { text: content.text.slice(0, 500) });
-    throw new Error('Claude draft generation: invalid JSON response');
+  const toolUse = message.content.find((block) => block.type === 'tool_use');
+  if (!toolUse || toolUse.type !== 'tool_use') {
+    logger.error('Claude did not return the draft tool call', { stopReason: message.stop_reason });
+    throw new Error('Claude draft generation: no structured output');
   }
+
+  const raw = toolUse.input as { titleOptions: [string, string, string]; slug: string; outline: string; body: string };
 
   const slug = (raw.slug ?? '')
     .toLowerCase()
