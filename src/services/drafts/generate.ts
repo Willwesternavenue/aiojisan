@@ -50,7 +50,7 @@ function formatXPost(text: string, url: string, hashtags: string[]): string {
 
 export async function generateDraftForArticle(
   articleId: string,
-  options: { autoPublish?: boolean } = {},
+  options: { autoPublish?: boolean; publishDate?: string; skipSocial?: boolean } = {},
 ): Promise<{ wpPostId: number } | null> {
   const db = getAdminClient();
   const ai = getAiProvider();
@@ -80,7 +80,7 @@ export async function generateDraftForArticle(
   }
 
   const insights = article.article_ai_insights;
-  const { autoPublish = false } = options;
+  const { autoPublish = false, publishDate, skipSocial = false } = options;
 
   logger.info('Generating draft', { articleId, title: article.title, autoPublish });
 
@@ -123,6 +123,7 @@ export async function generateDraftForArticle(
     draft.slug,
     wpStatus,
     categoryIds,
+    publishDate,
   );
 
   // Generate and attach featured image for auto-published articles only
@@ -142,29 +143,31 @@ export async function generateDraftForArticle(
       });
     }
 
-    try {
-      const publicUrl = getPublicArticleUrl(draft.slug);
-      const xPosts = await ai.generateXPosts({
-        articleTitle: selectedTitle,
-        articleUrl: publicUrl,
-        shortSummary: insights?.short_summary ?? '',
-        topics: insights?.topics ?? [],
-      });
-      const text = formatXPost(xPosts.direct, publicUrl, getHashtags(pillarCategories));
-      const result = await postToX({ text, articleId, url: publicUrl });
+    if (!skipSocial) {
+      try {
+        const publicUrl = getPublicArticleUrl(draft.slug);
+        const xPosts = await ai.generateXPosts({
+          articleTitle: selectedTitle,
+          articleUrl: publicUrl,
+          shortSummary: insights?.short_summary ?? '',
+          topics: insights?.topics ?? [],
+        });
+        const text = formatXPost(xPosts.direct, publicUrl, getHashtags(pillarCategories));
+        const result = await postToX({ text, articleId, url: publicUrl });
 
-      await db.from('generated_x_posts').insert({
-        article_id: articleId,
-        variant_label: 'direct',
-        text,
-        tone: result.tweeted ? '自動投稿済み' : '自動投稿スキップ',
-      });
-    } catch (xErr) {
-      logger.warn('X auto-post failed, post already published', {
-        articleId,
-        wpPostId,
-        err: String(xErr),
-      });
+        await db.from('generated_x_posts').insert({
+          article_id: articleId,
+          variant_label: 'direct',
+          text,
+          tone: result.tweeted ? '自動投稿済み' : '自動投稿スキップ',
+        });
+      } catch (xErr) {
+        logger.warn('X auto-post failed, post already published', {
+          articleId,
+          wpPostId,
+          err: String(xErr),
+        });
+      }
     }
   }
 
@@ -181,6 +184,7 @@ export async function generateDraftForArticle(
       model: draft.model,
       auto_generated: true,
       auto_published: autoPublish,
+      backfilled: Boolean(publishDate),
       pillarCategories: pillarCategories.map(category => category.slug),
     },
   });
