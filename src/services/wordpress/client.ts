@@ -1,10 +1,8 @@
 // WordPress REST API client
 // Uses Application Password auth — server-only
 
-import OpenAI from 'openai';
-import { GoogleGenAI } from '@google/genai';
 import { marked } from 'marked';
-import { getEnv, getOpenAiKey, getGoogleAiKey } from '@/lib/env';
+import { getEnv, getOpenAiKey } from '@/lib/env';
 import { createLogger } from '@/lib/logger';
 
 // Convert markdown to WordPress-friendly HTML
@@ -19,9 +17,10 @@ const logger = createLogger('wordpress');
 // Placeholder featured image used until a real image is generated
 const PLACEHOLDER_MEDIA_ID = 125;
 
-// Featured-image model: Gemini 3.1 Flash Image (Nano Banana 2) — much faster
-// and cheaper than the Pro image model (~13s vs ~22s/image).
-const IMAGE_MODEL = 'gemini-3.1-flash-image';
+// Featured-image model: OpenAI gpt-image-1-mini — cheapest current image model
+// (~$0.013/image @1536x1024 medium) and runs on the existing OpenAI credits.
+const IMAGE_MODEL = 'gpt-image-1-mini';
+const OPENAI_IMAGE_ENDPOINT = 'https://api.openai.com/v1/images/generations';
 
 interface WpPostPayload {
   title: string;
@@ -187,26 +186,37 @@ export async function generateAndAttachFeaturedImage(
 ): Promise<void> {
   logger.info('Generating featured image', { postId, slug });
 
-  const ai = new GoogleGenAI({ apiKey: getGoogleAiKey() });
-
   const imagePrompt =
     `テックブログのヘッダー画像を生成してください。` +
     `テーマ：「${title}」。` +
     `補足：${summary.slice(0, 150)}。` +
     `スタイル：明るい配色のフラットイラスト、白い背景、モダンなテクノロジーモチーフ。日本語テキスト使用可。顔なし、ロゴなし。`;
 
-  const imageResponse = await ai.models.generateContent({
-    model: IMAGE_MODEL,
-    contents: imagePrompt,
-    config: { responseModalities: ['IMAGE', 'TEXT'] },
+  const genRes = await fetch(OPENAI_IMAGE_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${getOpenAiKey()}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      model: IMAGE_MODEL,
+      prompt: imagePrompt,
+      size: '1536x1024',
+      quality: 'medium',
+      n: 1,
+    }),
   });
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const parts: any[] = (imageResponse as any).candidates?.[0]?.content?.parts ?? [];
-  const imgPart = parts.find((p: any) => p.inlineData);
-  if (!imgPart?.inlineData?.data) throw new Error(`${IMAGE_MODEL} returned no image data`);
+  if (!genRes.ok) {
+    const body = await genRes.text();
+    throw new Error(`OpenAI image generation failed ${genRes.status}: ${body}`);
+  }
 
-  const imageBuffer = Buffer.from(imgPart.inlineData.data, 'base64');
+  const genJson = (await genRes.json()) as { data?: Array<{ b64_json?: string }> };
+  const b64 = genJson.data?.[0]?.b64_json;
+  if (!b64) throw new Error(`${IMAGE_MODEL} returned no image data`);
+
+  const imageBuffer = Buffer.from(b64, 'base64');
 
   // Upload to WordPress media library
   const filename = `${slug}.png`;
