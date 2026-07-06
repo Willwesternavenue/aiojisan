@@ -19,9 +19,10 @@ const logger = createLogger('wordpress');
 // Placeholder featured image used until a real image is generated
 const PLACEHOLDER_MEDIA_ID = 125;
 
-// Featured-image model: Gemini 3.1 Flash Image (Nano Banana 2) — much faster
-// and cheaper than the Pro image model (~13s vs ~22s/image).
-const IMAGE_MODEL = 'gemini-3.1-flash-image';
+// Featured-image model: Gemini 3.1 Flash Lite Image — ~$0.034/image (about half
+// of flash) and renders the main Japanese title/subtitle cleanly. Small Japanese
+// annotations garble, so the prompt forbids tiny label text.
+const IMAGE_MODEL = 'gemini-3.1-flash-lite-image';
 
 interface WpPostPayload {
   title: string;
@@ -193,7 +194,9 @@ export async function generateAndAttachFeaturedImage(
     `テックブログのヘッダー画像を生成してください。` +
     `テーマ：「${title}」。` +
     `補足：${summary.slice(0, 150)}。` +
-    `スタイル：明るい配色のフラットイラスト、白い背景、モダンなテクノロジーモチーフ。日本語テキスト使用可。顔なし、ロゴなし。`;
+    `スタイル：明るい配色のフラットイラスト、白い背景、モダンなテクノロジーモチーフ。` +
+    `大きなタイトルと短いサブタイトルのみ日本語で入れ、それ以外の細かい注釈・ラベル・小さな文字は一切描かないこと（小さな日本語は文字化けするため）。` +
+    `顔なし、ロゴなし。`;
 
   const imageResponse = await ai.models.generateContent({
     model: IMAGE_MODEL,
