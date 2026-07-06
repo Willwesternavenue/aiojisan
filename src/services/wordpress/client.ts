@@ -2,7 +2,7 @@
 // Uses Application Password auth — server-only
 
 import { marked } from 'marked';
-import { getEnv, getOpenAiKey } from '@/lib/env';
+import { getEnv, getGoogleAiKey } from '@/lib/env';
 import { createLogger } from '@/lib/logger';
 
 // Convert markdown to WordPress-friendly HTML
@@ -17,10 +17,11 @@ const logger = createLogger('wordpress');
 // Placeholder featured image used until a real image is generated
 const PLACEHOLDER_MEDIA_ID = 125;
 
-// Featured-image model: OpenAI gpt-image-1-mini — cheapest current image model
-// (~$0.013/image @1536x1024 medium) and runs on the existing OpenAI credits.
-const IMAGE_MODEL = 'gpt-image-1-mini';
-const OPENAI_IMAGE_ENDPOINT = 'https://api.openai.com/v1/images/generations';
+// Featured-image model: Google gemini-2.5-flash-image (Nano Banana) — strong flat
+// illustrations at ~$0.039/image. We generate a TEXT-FREE decorative image: any
+// Japanese baked into the image garbles, so the title is shown by the site instead.
+const IMAGE_MODEL = 'gemini-2.5-flash-image';
+const GEMINI_IMAGE_ENDPOINT = `https://generativelanguage.googleapis.com/v1beta/models/${IMAGE_MODEL}:generateContent`;
 
 interface WpPostPayload {
   title: string;
@@ -186,34 +187,39 @@ export async function generateAndAttachFeaturedImage(
 ): Promise<void> {
   logger.info('Generating featured image', { postId, slug });
 
+  // 記事テーマは「理解のためだけ」に渡し、画像内には文字を一切描かせない。
+  // 日本語テキストはどの画像モデルでも文字化けし、タイトルを焼き込むと固有名詞も漏れるため、
+  // 装飾イラストのみ生成する（タイトルはサイト側の本物テキストで表示される）。
   const imagePrompt =
-    `テックブログのヘッダー画像を生成してください。` +
-    `テーマ：「${title}」。` +
-    `補足：${summary.slice(0, 150)}。` +
-    `スタイル：明るい配色のフラットイラスト、白い背景、モダンなテクノロジーモチーフ。日本語テキスト使用可。顔なし、ロゴなし。`;
+    'Create a clean, modern FLAT VECTOR ILLUSTRATION for a tech blog header (decorative eyecatch). ' +
+    'Use the following Japanese article ONLY to understand the THEME (do NOT render any of its words): ' +
+    `TITLE=「${title}」 SUMMARY=「${summary.slice(0, 200)}」. ` +
+    'Depict the theme with abstract tech motifs (cloud, server racks, circuit traces, gears, connection nodes, a subtle pause or warning symbol when relevant). ' +
+    'Bright friendly palette: blue base with orange accents, white background, balanced centered composition with clean negative space, minimalist and premium. ' +
+    'STRICT: absolutely NO text, NO letters, NO words, NO numbers, NO brand names, NO logos, NO captions, no human faces. Wide 16:9.';
 
-  const genRes = await fetch(OPENAI_IMAGE_ENDPOINT, {
+  const genRes = await fetch(`${GEMINI_IMAGE_ENDPOINT}?key=${getGoogleAiKey()}`, {
     method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${getOpenAiKey()}`,
-      'Content-Type': 'application/json',
-    },
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
-      model: IMAGE_MODEL,
-      prompt: imagePrompt,
-      size: '1536x1024',
-      quality: 'medium',
-      n: 1,
+      contents: [{ parts: [{ text: imagePrompt }] }],
+      generationConfig: {
+        responseModalities: ['IMAGE', 'TEXT'],
+        imageConfig: { aspectRatio: '16:9' },
+      },
     }),
   });
 
   if (!genRes.ok) {
     const body = await genRes.text();
-    throw new Error(`OpenAI image generation failed ${genRes.status}: ${body}`);
+    throw new Error(`Gemini image generation failed ${genRes.status}: ${body}`);
   }
 
-  const genJson = (await genRes.json()) as { data?: Array<{ b64_json?: string }> };
-  const b64 = genJson.data?.[0]?.b64_json;
+  const genJson = (await genRes.json()) as {
+    candidates?: Array<{ content?: { parts?: Array<{ inlineData?: { data?: string } }> } }>;
+  };
+  const parts = genJson.candidates?.[0]?.content?.parts ?? [];
+  const b64 = parts.find((p) => p.inlineData?.data)?.inlineData?.data;
   if (!b64) throw new Error(`${IMAGE_MODEL} returned no image data`);
 
   const imageBuffer = Buffer.from(b64, 'base64');
