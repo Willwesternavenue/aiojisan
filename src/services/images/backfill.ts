@@ -8,7 +8,7 @@ import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('image-backfill');
 
-// gemini-2.5-flash-image takes ~10-15s/image; 10 images stays comfortably under
+// Gemini 3.1 Flash Image takes ~13s; 10 × ~13s ≈ 130s stays comfortably under
 // the 300s function ceiling so the request always completes and redirects.
 const BACKFILL_LIMIT = 10;
 
