@@ -25,6 +25,7 @@ function getHashtags(categories: PillarCategory[]): string[] {
     if (category.slug === 'physical-ai') tags.add('#フィジカルAI');
     if (category.slug === 'ai-driven-development') tags.add('#AI駆動開発');
     if (category.slug === 'generative-ai-news') tags.add('#生成AI');
+    if (category.slug === 'overseas-ai-business') tags.add('#AIビジネス');
   }
 
   return [...tags].slice(0, 4);

@@ -61,6 +61,7 @@ async function getPublishStatsToday(db: ReturnType<typeof getAdminClient>): Prom
     byPillar: {
       'physical-ai': 0,
       'ai-driven-development': 0,
+      'overseas-ai-business': 0,
       'generative-ai-news': 0,
     },
   };
