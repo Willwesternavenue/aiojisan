@@ -49,6 +49,10 @@ CREATE TABLE system_alerts (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 CREATE INDEX idx_system_alerts_created_at ON system_alerts(created_at DESC);
+
+-- Server-only table: app reads/writes via service role (bypasses RLS).
+-- Enable RLS with no policies so anon/authenticated roles have zero access.
+ALTER TABLE system_alerts ENABLE ROW LEVEL SECURITY;
 ```
 
 **記録関数**（`provider.ts` 内 or `src/services/images/alerts.ts`）: `recordQuotaAlert(source, message)` — **スパム防止**として、同一 `source` のアラートが直近6時間内に存在すれば insert しない。
