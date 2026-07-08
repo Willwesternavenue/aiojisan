@@ -134,6 +134,7 @@ export async function generateDraftForArticle(
         selectedTitle,
         insights?.short_summary ?? '',
         draft.slug,
+        pillarCategories[0]?.slug,
       );
     } catch (imgErr) {
       logger.warn('Featured image generation failed, post already published without image', {
