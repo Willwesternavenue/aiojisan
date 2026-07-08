@@ -1,10 +1,9 @@
 // WordPress REST API client
 // Uses Application Password auth — server-only
 
-import OpenAI from 'openai';
-import { GoogleGenAI } from '@google/genai';
 import { marked } from 'marked';
-import { getEnv, getOpenAiKey, getGoogleAiKey } from '@/lib/env';
+import { getEnv } from '@/lib/env';
+import { generateFeaturedImageBuffer } from '@/services/images/provider';
 import { createLogger } from '@/lib/logger';
 
 // Convert markdown to WordPress-friendly HTML
@@ -18,11 +17,6 @@ const logger = createLogger('wordpress');
 
 // Placeholder featured image used until a real image is generated
 const PLACEHOLDER_MEDIA_ID = 125;
-
-// Featured-image model: Gemini 3.1 Flash Lite Image — ~$0.034/image (about half
-// of flash) and renders the main Japanese title/subtitle cleanly. Small Japanese
-// annotations garble, so the prompt forbids tiny label text.
-const IMAGE_MODEL = 'gemini-3.1-flash-lite-image';
 
 interface WpPostPayload {
   title: string;
@@ -177,39 +171,29 @@ export async function testWordPressConnection(): Promise<boolean> {
 }
 
 /**
- * Generate a featured image with DALL-E 3 and attach it to a WordPress post.
- * Only called for auto-published articles to keep costs low.
+ * Generate a featured image (pillar-routed provider with fallback) and
+ * attach it to a WordPress post. Only called for auto-published articles.
  */
 export async function generateAndAttachFeaturedImage(
   postId: number,
   title: string,
   summary: string,
   slug: string,
+  pillar?: string,
 ): Promise<void> {
-  logger.info('Generating featured image', { postId, slug });
-
-  const ai = new GoogleGenAI({ apiKey: getGoogleAiKey() });
+  logger.info('Generating featured image', { postId, slug, pillar });
 
   const imagePrompt =
     `テックブログのヘッダー画像を生成してください。` +
     `テーマ：「${title}」。` +
     `補足：${summary.slice(0, 150)}。` +
-    `スタイル：明るい配色のフラットイラスト、白い背景、モダンなテクノロジーモチーフ。` +
-    `大きなタイトルと短いサブタイトルのみ日本語で入れ、それ以外の細かい注釈・ラベル・小さな文字は一切描かないこと（小さな日本語は文字化けするため）。` +
-    `顔なし、ロゴなし。`;
+    `スタイル：明るい配色のフラットイラスト、白い背景、モダンなテクノロジーモチーフ。日本語テキスト使用可。顔なし、ロゴなし。`;
 
-  const imageResponse = await ai.models.generateContent({
-    model: IMAGE_MODEL,
-    contents: imagePrompt,
-    config: { responseModalities: ['IMAGE', 'TEXT'] },
-  });
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const parts: any[] = (imageResponse as any).candidates?.[0]?.content?.parts ?? [];
-  const imgPart = parts.find((p: any) => p.inlineData);
-  if (!imgPart?.inlineData?.data) throw new Error(`${IMAGE_MODEL} returned no image data`);
-
-  const imageBuffer = Buffer.from(imgPart.inlineData.data, 'base64');
+  const { buffer: imageBuffer, provider, model } = await generateFeaturedImageBuffer(
+    imagePrompt,
+    pillar,
+  );
+  logger.info('Image generated', { postId, provider, model });
 
   // Upload to WordPress media library
   const filename = `${slug}.png`;
@@ -222,7 +206,7 @@ export async function generateAndAttachFeaturedImage(
       'Content-Disposition': `attachment; filename="${filename}"`,
       'Content-Type': 'image/png',
     },
-    body: imageBuffer,
+    body: new Uint8Array(imageBuffer),
   });
 
   if (!mediaRes.ok) {

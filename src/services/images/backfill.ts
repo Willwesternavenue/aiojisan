@@ -4,13 +4,16 @@ import {
   listPublishedPostsWithPlaceholderImage,
   generateAndAttachFeaturedImage,
 } from '@/services/wordpress/client';
+import { detectPillarCategories } from '@/services/editorial/pillars';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('image-backfill');
 
-// Gemini 3.1 Flash Image takes ~13s; 10 × ~13s ≈ 130s stays comfortably under
-// the 300s function ceiling so the request always completes and redirects.
-const BACKFILL_LIMIT = 10;
+// Nano Banana Pro takes ~21s and gpt-image-2 ~54s per image; 5 per batch
+// (~250s worst normal case) stays under the 300s function ceiling. A
+// full-fallback batch could exceed it, but attached images persist and the
+// operator just clicks again (idempotent).
+const BACKFILL_LIMIT = 5;
 
 export interface BackfillResult {
   totalMissing: number;
@@ -35,7 +38,8 @@ export async function backfillMissingFeaturedImages(
   let failed = 0;
   for (const post of batch) {
     try {
-      await generateAndAttachFeaturedImage(post.id, post.title, post.summary, post.slug);
+      const pillar = detectPillarCategories([post.title, post.summary])[0]?.slug;
+      await generateAndAttachFeaturedImage(post.id, post.title, post.summary, post.slug, pillar);
       succeeded++;
     } catch (err) {
       failed++;
