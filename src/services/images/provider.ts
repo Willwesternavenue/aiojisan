@@ -2,9 +2,9 @@
 // cross-provider fallback and quota-depletion alerting.
 //
 // Routing: ai-driven-development → gpt-image-2 (OpenAI); everything else
-// (physical-ai, generative-ai-news, unknown) → gemini-3-pro-image
-// ("Nano Banana Pro"). If the primary provider fails, the other one is
-// tried once before giving up.
+// (physical-ai, generative-ai-news, overseas-ai-business, unknown) →
+// gemini-3-pro-image ("Nano Banana Pro"). If the primary provider fails,
+// the other one is tried once before giving up.
 
 import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
