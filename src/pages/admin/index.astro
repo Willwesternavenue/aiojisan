@@ -30,9 +30,35 @@ type RunRow = {
   sources: { name: string } | null;
 };
 const recentRuns = (recentRunsRaw ?? []) as RunRow[];
+
+// Quota alerts (last 7 days) — surfaced when image-generation credits run out
+type AlertRow = { source: string; message: string; created_at: string };
+let quotaAlerts: AlertRow[] = [];
+try {
+  const { data } = await db
+    .from('system_alerts')
+    .select('source, message, created_at')
+    .gte('created_at', new Date(Date.now() - 7 * 24 * 3600_000).toISOString())
+    .order('created_at', { ascending: false })
+    .limit(5);
+  quotaAlerts = (data ?? []) as AlertRow[];
+} catch {
+  quotaAlerts = [];
+}
 ---
 
 <AdminLayout title="ダッシュボード" activeNav="dashboard">
+  {quotaAlerts.length > 0 && (
+    <div class="mb-6 px-4 py-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-700">
+      <p class="font-semibold mb-1">⚠️ 画像生成のクレジット枯渇を検知しました</p>
+      {quotaAlerts.map(a => (
+        <p class="text-xs">
+          {a.source === 'gemini' ? 'Gemini（AI Studio）' : 'OpenAI'}
+          ・{new Date(a.created_at).toLocaleString('ja-JP')} — 残高を確認してください
+        </p>
+      ))}
+    </div>
+  )}
   <!-- Stats row -->
   <div class="grid grid-cols-4 gap-4 mb-8">
     <div class="bg-surface border border-border rounded-md p-4">
