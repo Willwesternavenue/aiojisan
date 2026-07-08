@@ -1,23 +1,6 @@
 ---
 import PublicLayout from '@/layouts/PublicLayout.astro';
-
-const EDITORIAL_CATEGORIES = [
-  {
-    slug: 'generative-ai-news',
-    label: '生成AIニュース',
-    description: 'モデル、プロダクト、研究、企業導入、政策などAI全般の動き',
-  },
-  {
-    slug: 'ai-driven-development',
-    label: 'AI駆動開発',
-    description: 'コーディングエージェント、開発プロセス、DevOps、PM/QA',
-  },
-  {
-    slug: 'physical-ai',
-    label: 'フィジカルAI',
-    description: 'ロボット、ヒューマノイド、自動運転、製造・物流現場のAI',
-  },
-] as const;
+import { EDITORIAL_DISPLAY_CATEGORIES as EDITORIAL_CATEGORIES } from '@/services/editorial/pillars';
 
 type WpCategory = {
   id: number;
