@@ -113,38 +113,40 @@ const homeJsonLd = {
   description="AIおじさんのひとりごと。生成AI、AI駆動開発、フィジカルAI、海外AIビジネスの4本柱を実務目線で読み解くニュース分析メディアです。"
   jsonLd={homeJsonLd}
 >
-  <!-- Hero + 四本柱 index -->
-  <section class="max-w-admin mx-auto px-6 pt-16 pb-14">
-    <div class="lg:flex lg:items-end lg:justify-between lg:gap-14">
-      <div class="max-w-2xl">
-        <p class="text-sm text-accent font-medium mb-3 uppercase tracking-wide">AIおじさんのひとりごと</p>
-        <h1 class="text-4xl font-semibold text-text-primary leading-tight mb-4">
-          実務目線で読み解く<br />AIニュースの判断軸
-        </h1>
-        <p class="text-lg text-text-secondary leading-relaxed">
-          生成AI・AI駆動開発・フィジカルAI・海外AIビジネス。
-          4つの柱を横断して、「なぜ重要か」「実務にどう響くか」を自分なりの視点で書いています。
+  <!-- Hero: 墨の帯 + 明朝の題字 -->
+  <section class="hero-band">
+    <div class="max-w-admin mx-auto px-6 pt-16 pb-24 lg:pt-20 lg:pb-28">
+      <div class="max-w-3xl">
+        <p class="hero-eyebrow">
+          <span class="hero-eyebrow-dot" aria-hidden="true"></span>
+          AIおじさんのひとりごと
         </p>
+        <h1 class="hero-title">
+          実務目線で読み解く、<br />AIニュースの判断軸。
+        </h1>
+        <p class="hero-sub">生成AI・AI駆動開発・フィジカルAI・海外AIビジネス。4つの柱を横断して、「なぜ重要か」「実務にどう響くか」を自分なりの視点で書いています。</p>
       </div>
-      <nav class="pillar-index mt-10 lg:mt-0 lg:w-96 shrink-0" aria-label="4本柱">
-        {pillarIndex.map(pillar => (
-          <a href={`/articles?category=${encodeURIComponent(pillar.slug)}`} class="pillar" title={pillar.description}>
+    </div>
+  </section>
+
+  <!-- 四本柱 index: 墨の帯に半分乗る紙のインデックス -->
+  <div class="max-w-admin mx-auto px-6 -mt-12 lg:-mt-14 relative z-10">
+    <nav class="pillar-strip" aria-label="4本柱">
+      {pillarIndex.map(pillar => (
+        <a href={`/articles?category=${encodeURIComponent(pillar.slug)}`} class="pillar-cell">
+          <span class="pillar-name">{pillar.label}</span>
+          <span class="pillar-desc">{pillar.description}</span>
+          <span class="pillar-foot">
             <span class="pillar-tick" aria-hidden="true"></span>
-            <span class="pillar-label">{pillar.label}</span>
             <span class="pillar-date">
               {pillar.latestDate
                 ? new Date(pillar.latestDate).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })
                 : '準備中'}
             </span>
-          </a>
-        ))}
-      </nav>
-    </div>
-  </section>
-
-  <!-- Divider -->
-  <div class="max-w-admin mx-auto px-6">
-    <hr class="border-border" />
+          </span>
+        </a>
+      ))}
+    </nav>
   </div>
 
   <!-- Featured: lead story + rail -->
@@ -280,74 +282,126 @@ const homeJsonLd = {
 </PublicLayout>
 
 <style>
-  /* 四本柱インデックス — 縦書き明朝の柱。サイトの編集方針「4本柱」をそのまま形にする */
-  .pillar-index {
+  /* ── トップ限定パレット: 墨（緑がかったインク）・紙・朱（おじさんの赤ペン） ── */
+  .hero-band {
+    --ink: #182019;
+    --ink-soft: rgba(250, 249, 245, 0.72);
+    background: var(--ink);
+  }
+  .hero-eyebrow {
+    display: flex;
+    align-items: center;
+    gap: 0.55rem;
+    font-size: 0.8rem;
+    letter-spacing: 0.14em;
+    color: var(--ink-soft);
+    margin-bottom: 1.1rem;
+  }
+  .hero-eyebrow-dot {
+    width: 0.5rem;
+    height: 0.5rem;
+    background: #C0402A; /* 朱 */
+    flex-shrink: 0;
+  }
+  .hero-title {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: clamp(1.8rem, 4.5vw, 3.3rem);
+    line-height: 1.32;
+    letter-spacing: 0.02em;
+    color: #FAF9F5;
+    margin-bottom: 1.2rem;
+  }
+  .hero-sub {
+    font-size: 1.05rem;
+    line-height: 1.9;
+    color: var(--ink-soft);
+    max-width: 38rem;
+  }
+
+  /* ── 四本柱インデックス（横書き・墨の帯に半分乗る紙の帯） ── */
+  .pillar-strip {
     display: grid;
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.75rem;
-  }
-  .pillar {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    height: 15rem;
-    padding: 1rem 0.5rem 0.85rem;
     background: var(--color-surface);
     border: 1px solid var(--color-border);
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
+    box-shadow: 0 12px 32px rgba(24, 32, 25, 0.08);
+    overflow: hidden;
+  }
+  .pillar-cell {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 1.15rem 1.25rem 1rem;
     text-decoration: none;
-    transition: border-color 0.2s ease, transform 0.2s ease;
+    border-left: 1px solid var(--color-border);
+    transition: background-color 0.2s ease;
   }
-  .pillar:hover,
-  .pillar:focus-visible {
-    border-color: var(--color-accent);
+  .pillar-cell:first-child {
+    border-left: none;
   }
-  .pillar:focus-visible {
+  .pillar-cell:hover,
+  .pillar-cell:focus-visible {
+    background: #F4F6F3;
+  }
+  .pillar-cell:focus-visible {
     outline: 2px solid var(--color-accent);
-    outline-offset: 2px;
+    outline-offset: -2px;
   }
-  .pillar-tick {
-    width: 2px;
-    height: 0.9rem;
-    background: var(--color-accent);
-    transition: height 0.2s ease;
-  }
-  .pillar:hover .pillar-tick {
-    height: 1.6rem;
-  }
-  .pillar-label {
-    writing-mode: vertical-rl;
-    text-orientation: mixed;
-    font-family: var(--font-serif);
-    font-size: 1rem;
-    font-weight: 500;
-    letter-spacing: 0.28em;
+  .pillar-name {
+    font-size: 0.95rem;
+    font-weight: 600;
     color: var(--color-text-primary);
-    flex: 1;
-    padding-top: 0.7rem;
     transition: color 0.2s ease;
   }
-  .pillar:hover .pillar-label {
+  .pillar-cell:hover .pillar-name {
     color: var(--color-accent);
+  }
+  .pillar-desc {
+    font-size: 0.72rem;
+    line-height: 1.5;
+    color: var(--color-text-muted);
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 2.15rem;
+  }
+  .pillar-foot {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin-top: 0.3rem;
+  }
+  .pillar-tick {
+    width: 1rem;
+    height: 2px;
+    background: #C0402A; /* 朱 */
+    transition: width 0.2s ease;
+  }
+  .pillar-cell:hover .pillar-tick {
+    width: 1.6rem;
   }
   .pillar-date {
     font-family: var(--font-mono);
-    font-size: 0.68rem;
+    font-size: 0.7rem;
     letter-spacing: 0.05em;
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
   }
-  @media (prefers-reduced-motion: no-preference) {
-    .pillar:hover {
-      transform: translateY(-3px);
+  @media (max-width: 767px) {
+    .pillar-strip {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-  }
-  @media (max-width: 480px) {
-    .pillar {
-      height: 12.5rem;
+    .pillar-cell {
+      border-left: none;
+      border-top: 1px solid var(--color-border);
     }
-    .pillar-label {
-      font-size: 0.9rem;
-      letter-spacing: 0.2em;
+    .pillar-cell:nth-child(-n + 2) {
+      border-top: none;
+    }
+    .pillar-cell:nth-child(2n) {
+      border-left: 1px solid var(--color-border);
     }
   }
 </style>
