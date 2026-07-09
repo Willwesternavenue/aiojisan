@@ -1,4 +1,5 @@
 import type { APIRoute } from 'astro';
+import { stripHtml } from '@/lib/html';
 
 type WpPost = {
   slug: string;
@@ -11,12 +12,6 @@ type WpPost = {
 const SITE_TITLE = 'AIおじさんのひとりごと';
 const SITE_DESCRIPTION = '生成AI、AI駆動開発、フィジカルAIを実務目線で読み解くニュース分析メディア';
 
-function stripHtml(html: string): string {
-  return html
-    .replace(/<[^>]*>/g, '')
-    .replace(/&nbsp;/g, ' ')
-    .trim();
-}
 
 function escapeXml(value: string): string {
   return value

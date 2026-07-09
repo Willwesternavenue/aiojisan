@@ -1,6 +1,7 @@
 ---
 import PublicLayout from '@/layouts/PublicLayout.astro';
 import { EDITORIAL_DISPLAY_CATEGORIES as EDITORIAL_CATEGORIES } from '@/services/editorial/pillars';
+import { stripHtml } from '@/lib/html';
 
 type WpCategory = {
   id: number;
@@ -59,18 +60,6 @@ async function fetchPostsPage(
   } catch {
     return { posts: [], total: 0, totalPages: 1 };
   }
-}
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<[^>]*>/g, '')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#039;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .trim();
 }
 
 const selectedSlug = Astro.url.searchParams.get('category') ?? '';

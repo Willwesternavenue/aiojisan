@@ -1,6 +1,7 @@
 ---
 import PublicLayout from '@/layouts/PublicLayout.astro';
 import { EDITORIAL_DISPLAY_CATEGORIES as EDITORIAL_CATEGORIES } from '@/services/editorial/pillars';
+import { stripHtml } from '@/lib/html';
 
 type EditorialCategory = (typeof EDITORIAL_CATEGORIES)[number];
 
@@ -46,12 +47,6 @@ async function fetchWpPosts(perPage = 24): Promise<WpPost[]> {
   } catch {
     return [];
   }
-}
-
-function stripHtml(html: string): string {
-  return html.replace(/<[^>]*>/g, '').replace(/&[a-z]+;/gi, c =>
-    ({ '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#039;': "'" })[c] ?? c
-  ).trim();
 }
 
 function getEditorialCategory(post: WpPost): EditorialCategory {

@@ -1,5 +1,6 @@
 ---
 import PublicLayout from '@/layouts/PublicLayout.astro';
+import { stripHtml } from '@/lib/html';
 
 const { slug } = Astro.params;
 
@@ -38,18 +39,6 @@ try {
 
 if (!post) {
   return Astro.redirect('/articles');
-}
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<[^>]*>/g, '')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#039;/g, "'")
-    .replace(/&nbsp;/g, ' ')
-    .trim();
 }
 
 async function fetchRelatedPosts(currentPost: WpPost): Promise<WpPost[]> {
