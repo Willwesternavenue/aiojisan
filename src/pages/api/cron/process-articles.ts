@@ -15,6 +15,8 @@ const DAILY_AUTO_PUBLISH_TARGET      = 5;
 const DAILY_PHYSICAL_AI_TARGET       = 2;
 const CARRYOVER_LOOKBACK_HOURS       = 48;
 const CARRYOVER_CANDIDATE_LIMIT      = 50;
+const FLOOR_PUBLISH_THRESHOLD        = 8.0;
+const FLOOR_DROUGHT_HOURS            = 24;
 
 const logger = createLogger('cron:process-articles');
 const BATCH_SIZE = 20;
@@ -139,7 +141,7 @@ async function publishArticle(
   scores: EditorialScores,
   pillarCategories: ReturnType<typeof detectPillarCategories>,
   publishStats: PublishStats,
-  context: 'carryover' | 'new',
+  context: 'carryover' | 'new' | 'daily-floor',
 ): Promise<boolean> {
   const result = await generateDraftForArticle(articleId, { autoPublish: true });
   if (!result) {
@@ -264,6 +266,129 @@ async function publishCarryoverCandidates(
   }
 
   return { published, failed };
+}
+
+// Daily floor: if nothing has published for 24h, publish the single best
+// unpublished candidate (>= 8.0) from the carryover window so the site
+// never goes a full day without a new article. Quality floor is 8.0 —
+// if nothing reaches it, we publish nothing.
+async function publishDailyFloorCandidate(
+  db: ReturnType<typeof getAdminClient>,
+  publishStats: PublishStats,
+): Promise<{ published: number }> {
+  const { data: lastPublished, error: lastErr } = await db
+    .from('generated_drafts')
+    .select('created_at')
+    .eq('status', 'published')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (lastErr) {
+    logger.warn('Daily floor: failed to check last publish time', { error: lastErr.message });
+    return { published: 0 };
+  }
+
+  const droughtCutoff = Date.now() - FLOOR_DROUGHT_HOURS * 60 * 60 * 1000;
+  if (lastPublished && new Date(lastPublished.created_at).getTime() > droughtCutoff) {
+    return { published: 0 };
+  }
+
+  const { data, error } = await db
+    .from('articles')
+    .select(`
+      id,
+      title,
+      canonical_url,
+      created_at,
+      published_at,
+      sources(name),
+      article_ai_insights(
+        short_summary,
+        long_summary,
+        tags,
+        topics,
+        overall_score,
+        blog_post_potential_score
+      ),
+      article_actions(action_type),
+      generated_drafts(id)
+    `)
+    .gte('created_at', getCarryoverCutoff())
+    .order('published_at', { ascending: false })
+    .limit(CARRYOVER_CANDIDATE_LIMIT);
+
+  if (error) {
+    logger.warn('Daily floor: failed to fetch candidates', { error: error.message });
+    return { published: 0 };
+  }
+
+  const candidates = (data ?? [])
+    .filter((article: any) => {
+      const insights = Array.isArray(article.article_ai_insights)
+        ? article.article_ai_insights[0]
+        : article.article_ai_insights;
+      const actions = Array.isArray(article.article_actions) ? article.article_actions : [];
+      const alreadyDrafted = actions.some((action: any) => action.action_type === 'generate_blog_draft');
+      const hasDraft = Array.isArray(article.generated_drafts)
+        ? article.generated_drafts.length > 0
+        : Boolean(article.generated_drafts);
+      return Number(insights?.overall_score ?? 0) >= FLOOR_PUBLISH_THRESHOLD && !alreadyDrafted && !hasDraft;
+    })
+    .sort((a: any, b: any) => {
+      const insightA = Array.isArray(a.article_ai_insights) ? a.article_ai_insights[0] : a.article_ai_insights;
+      const insightB = Array.isArray(b.article_ai_insights) ? b.article_ai_insights[0] : b.article_ai_insights;
+      const overallDiff = Number(insightB?.overall_score ?? 0) - Number(insightA?.overall_score ?? 0);
+      if (overallDiff !== 0) return overallDiff;
+
+      const blogDiff =
+        Number(insightB?.blog_post_potential_score ?? 0) -
+        Number(insightA?.blog_post_potential_score ?? 0);
+      if (blogDiff !== 0) return blogDiff;
+
+      return new Date(b.published_at ?? 0).getTime() - new Date(a.published_at ?? 0).getTime();
+    });
+
+  const article = candidates[0];
+  if (!article) {
+    logger.info('Daily floor: drought detected but no candidate >= floor', {
+      floor: FLOOR_PUBLISH_THRESHOLD,
+    });
+    return { published: 0 };
+  }
+
+  const insights = Array.isArray(article.article_ai_insights)
+    ? article.article_ai_insights[0]
+    : article.article_ai_insights;
+  const sourceName = (article.sources as unknown as { name: string } | null)?.name ?? 'Unknown';
+  const scores = {
+    overallScore: Number(insights?.overall_score ?? 0),
+    blogPostPotentialScore: insights?.blog_post_potential_score,
+  };
+  const pillarCategories = getPillarCategories([
+    article.title,
+    article.canonical_url,
+    sourceName,
+    insights?.short_summary,
+    insights?.long_summary,
+    ...(insights?.topics ?? []),
+    ...(insights?.tags ?? []),
+  ]);
+
+  logger.info('Daily floor publish', {
+    articleId: article.id,
+    score: scores.overallScore,
+    droughtHours: FLOOR_DROUGHT_HOURS,
+    pillarCategories: pillarCategories.map(category => category.slug),
+  });
+
+  try {
+    const didPublish = await publishArticle(article.id, scores, pillarCategories, publishStats, 'daily-floor');
+    return { published: didPublish ? 1 : 0 };
+  } catch (err) {
+    logger.warn('Daily floor publish failed', { articleId: article.id, err: String(err) });
+    return { published: 0 };
+  }
 }
 
 async function handler(request: Request): Promise<Response> {
@@ -423,7 +548,9 @@ async function handler(request: Request): Promise<Response> {
     }
   }
 
-  const result = { ok: true, processed, failed, total: (articles ?? []).length, carryover, publishStats };
+  const dailyFloor = await publishDailyFloorCandidate(db, publishStats);
+
+  const result = { ok: true, processed, failed, total: (articles ?? []).length, carryover, dailyFloor, publishStats };
   logger.info('Cron process-articles complete', result);
 
   return new Response(JSON.stringify(result), {
