@@ -10,7 +10,7 @@ type WpPost = {
 };
 
 const SITE_TITLE = 'AIおじさんのひとりごと';
-const SITE_DESCRIPTION = '生成AI、AI駆動開発、フィジカルAIを実務目線で読み解くニュース分析メディア';
+const SITE_DESCRIPTION = '生成AI、AI駆動開発、フィジカルAI、海外AIビジネスの4本柱を実務目線で読み解くニュース分析メディア';
 
 
 function escapeXml(value: string): string {

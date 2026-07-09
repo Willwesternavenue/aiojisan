@@ -80,13 +80,26 @@ const featuredArticles = EDITORIAL_CATEGORIES
   .map(category => latestArticles.find(article => article.category.slug === category.slug))
   .filter((article): article is ArticleCard => Boolean(article));
 
+// 四本柱インデックス: 記事ゼロの柱も含めて常に4本立てる（鮮度=最新記事日付を足元に）
+const pillarIndex = EDITORIAL_CATEGORIES.map(category => ({
+  ...category,
+  latestDate: latestArticles.find(article => article.category.slug === category.slug)?.publishedAt ?? null,
+}));
+
+// 注目の記事: 最新の1本をリードに、残りを右レールへ
+const featuredByDate = [...featuredArticles].sort(
+  (a, b) => new Date(b.publishedAt).getTime() - new Date(a.publishedAt).getTime(),
+);
+const leadArticle = featuredByDate[0] ?? null;
+const railArticles = featuredByDate.slice(1);
+
 const homeJsonLd = {
   '@context': 'https://schema.org',
   '@type': 'WebSite',
   name: 'AIおじさんのひとりごと',
   alternateName: 'AIおじさん',
   url: 'https://www.aiojisan.com/',
-  description: '生成AI、AI駆動開発、フィジカルAIを実務目線で読み解くメディア',
+  description: '生成AI、AI駆動開発、フィジカルAI、海外AIビジネスの4本柱を実務目線で読み解くメディア',
   publisher: {
     '@type': 'Organization',
     name: 'AIおじさんのひとりごと',
@@ -97,20 +110,35 @@ const homeJsonLd = {
 
 <PublicLayout
   title="AIおじさんのひとりごと"
-  description="AIおじさんのひとりごと。生成AI、AI駆動開発、フィジカルAIを実務目線で読み解くニュース分析メディアです。"
+  description="AIおじさんのひとりごと。生成AI、AI駆動開発、フィジカルAI、海外AIビジネスの4本柱を実務目線で読み解くニュース分析メディアです。"
   jsonLd={homeJsonLd}
 >
-  <!-- Hero -->
-  <section class="max-w-admin mx-auto px-6 pt-16 pb-12">
-    <div class="max-w-2xl">
-      <p class="text-sm text-accent font-medium mb-3 uppercase tracking-wide">AIおじさんのひとりごと</p>
-      <h1 class="text-4xl font-semibold text-text-primary leading-tight mb-4">
-        実務目線で読み解く<br />AIニュースの判断軸
-      </h1>
-      <p class="text-lg text-text-secondary leading-relaxed">
-        生成AI、AI駆動開発、フィジカルAIを横断して、「なぜ重要か」
-        「実務にどう響くか」を自分なりの視点で書いています。
-      </p>
+  <!-- Hero + 四本柱 index -->
+  <section class="max-w-admin mx-auto px-6 pt-16 pb-14">
+    <div class="lg:flex lg:items-end lg:justify-between lg:gap-14">
+      <div class="max-w-2xl">
+        <p class="text-sm text-accent font-medium mb-3 uppercase tracking-wide">AIおじさんのひとりごと</p>
+        <h1 class="text-4xl font-semibold text-text-primary leading-tight mb-4">
+          実務目線で読み解く<br />AIニュースの判断軸
+        </h1>
+        <p class="text-lg text-text-secondary leading-relaxed">
+          生成AI・AI駆動開発・フィジカルAI・海外AIビジネス。
+          4つの柱を横断して、「なぜ重要か」「実務にどう響くか」を自分なりの視点で書いています。
+        </p>
+      </div>
+      <nav class="pillar-index mt-10 lg:mt-0 lg:w-96 shrink-0" aria-label="4本柱">
+        {pillarIndex.map(pillar => (
+          <a href={`/articles?category=${encodeURIComponent(pillar.slug)}`} class="pillar" title={pillar.description}>
+            <span class="pillar-tick" aria-hidden="true"></span>
+            <span class="pillar-label">{pillar.label}</span>
+            <span class="pillar-date">
+              {pillar.latestDate
+                ? new Date(pillar.latestDate).toLocaleDateString('ja-JP', { month: 'numeric', day: 'numeric' })
+                : '準備中'}
+            </span>
+          </a>
+        ))}
+      </nav>
     </div>
   </section>
 
@@ -119,49 +147,70 @@ const homeJsonLd = {
     <hr class="border-border" />
   </div>
 
-  <!-- Featured articles -->
-  {featuredArticles.length > 0 && (
+  <!-- Featured: lead story + rail -->
+  {leadArticle && (
     <section class="max-w-admin mx-auto px-6 py-12">
       <div class="flex items-end justify-between gap-4 mb-6">
-        <div>
-          <h2 class="text-xs font-medium text-text-muted uppercase tracking-widest">
-            注目の記事
-          </h2>
-        </div>
+        <h2 class="text-xs font-medium text-text-muted uppercase tracking-widest">
+          注目の記事
+        </h2>
         <a href="/articles" class="hidden sm:inline text-sm text-accent hover:underline">記事一覧 →</a>
       </div>
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {featuredArticles.map(article => (
-          <a href={`/articles/${article.slug}`}
-            class="group border border-border rounded-lg overflow-hidden hover:border-accent/40 transition-colors bg-surface">
-            {article.thumbnail && (
-              <div class="aspect-video overflow-hidden bg-[#F0F0EE]">
-                <img
-                  src={article.thumbnail}
-                  alt={article.title}
-                  class="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
-                  loading="eager"
-                  fetchpriority="high"
-                />
-              </div>
-            )}
-            <div class="p-5">
-              <span class="text-xs text-accent font-medium uppercase tracking-wide">
-                {article.category.label}
-              </span>
-              <p class="text-xs text-text-muted mt-1 line-clamp-1">{article.category.description}</p>
-              <h3 class="text-base font-semibold text-text-primary mt-2 mb-2 leading-snug group-hover:text-accent transition-colors">
-                {article.title}
-              </h3>
-              <p class="text-sm text-text-secondary leading-relaxed line-clamp-3">
-                {article.excerpt}
-              </p>
-              <p class="text-xs text-text-muted mt-3">
-                {new Date(article.publishedAt).toLocaleDateString('ja-JP')}
-              </p>
+      <div class="grid grid-cols-1 lg:grid-cols-5 gap-10">
+        <a href={`/articles/${leadArticle.slug}`} class="group lg:col-span-3 block">
+          {leadArticle.thumbnail && (
+            <div class="aspect-video overflow-hidden rounded-lg border border-border bg-[#F0F0EE]">
+              <img
+                src={leadArticle.thumbnail}
+                alt={leadArticle.title}
+                class="w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-300"
+                loading="eager"
+                fetchpriority="high"
+              />
             </div>
-          </a>
-        ))}
+          )}
+          <div class="pt-5">
+            <span class="text-xs text-accent font-medium uppercase tracking-wide">
+              {leadArticle.category.label}
+            </span>
+            <h3 class="text-2xl font-semibold text-text-primary mt-2 mb-3 leading-snug group-hover:text-accent transition-colors">
+              {leadArticle.title}
+            </h3>
+            <p class="text-base text-text-secondary leading-relaxed line-clamp-3">
+              {leadArticle.excerpt}
+            </p>
+            <p class="text-xs text-text-muted mt-3 font-mono">
+              {new Date(leadArticle.publishedAt).toLocaleDateString('ja-JP')}
+            </p>
+          </div>
+        </a>
+        <div class="lg:col-span-2 flex flex-col divide-y divide-border">
+          {railArticles.map(article => (
+            <a href={`/articles/${article.slug}`} class="group flex items-start gap-4 py-5 first:pt-0 last:pb-0">
+              {article.thumbnail && (
+                <div class="w-28 h-[4.5rem] shrink-0 overflow-hidden rounded border border-border bg-[#F0F0EE]">
+                  <img
+                    src={article.thumbnail}
+                    alt={article.title}
+                    class="w-full h-full object-cover"
+                    loading="lazy"
+                  />
+                </div>
+              )}
+              <div class="min-w-0">
+                <span class="text-xs text-accent font-medium uppercase tracking-wide">
+                  {article.category.label}
+                </span>
+                <h3 class="text-sm font-semibold text-text-primary mt-1 leading-snug line-clamp-2 group-hover:text-accent transition-colors">
+                  {article.title}
+                </h3>
+                <p class="text-xs text-text-muted mt-1.5 font-mono">
+                  {new Date(article.publishedAt).toLocaleDateString('ja-JP')}
+                </p>
+              </div>
+            </a>
+          ))}
+        </div>
       </div>
     </section>
   )}
@@ -178,7 +227,7 @@ const homeJsonLd = {
         <p class="text-text-muted text-sm">記事を準備中です</p>
       </div>
     ) : (
-      <div class="grid grid-cols-1 lg:grid-cols-3 gap-8">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-x-12 gap-y-10">
         {articlesByCategory.map(({ category, articles }) => (
           <section class="min-w-0">
             <div class="mb-4">
@@ -229,3 +278,76 @@ const homeJsonLd = {
     )}
   </section>
 </PublicLayout>
+
+<style>
+  /* 四本柱インデックス — 縦書き明朝の柱。サイトの編集方針「4本柱」をそのまま形にする */
+  .pillar-index {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+  .pillar {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    height: 15rem;
+    padding: 1rem 0.5rem 0.85rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: var(--radius-md);
+    text-decoration: none;
+    transition: border-color 0.2s ease, transform 0.2s ease;
+  }
+  .pillar:hover,
+  .pillar:focus-visible {
+    border-color: var(--color-accent);
+  }
+  .pillar:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+  .pillar-tick {
+    width: 2px;
+    height: 0.9rem;
+    background: var(--color-accent);
+    transition: height 0.2s ease;
+  }
+  .pillar:hover .pillar-tick {
+    height: 1.6rem;
+  }
+  .pillar-label {
+    writing-mode: vertical-rl;
+    text-orientation: mixed;
+    font-family: var(--font-serif);
+    font-size: 1rem;
+    font-weight: 500;
+    letter-spacing: 0.28em;
+    color: var(--color-text-primary);
+    flex: 1;
+    padding-top: 0.7rem;
+    transition: color 0.2s ease;
+  }
+  .pillar:hover .pillar-label {
+    color: var(--color-accent);
+  }
+  .pillar-date {
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    letter-spacing: 0.05em;
+    color: var(--color-text-muted);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    .pillar:hover {
+      transform: translateY(-3px);
+    }
+  }
+  @media (max-width: 480px) {
+    .pillar {
+      height: 12.5rem;
+    }
+    .pillar-label {
+      font-size: 0.9rem;
+      letter-spacing: 0.2em;
+    }
+  }
+</style>
