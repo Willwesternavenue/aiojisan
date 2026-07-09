@@ -73,7 +73,9 @@ export async function generateBlogDraftWithClaude(input: BlogDraftInput): Promis
     throw new Error('Claude draft generation: no structured output');
   }
 
-  const raw = toolUse.input as { titleOptions: [string, string, string]; slug: string; outline: string; body: string };
+  const raw = toolUse.input as { titleOptions: unknown; slug: string; outline: string; body: string };
+
+  const titleOptions = normalizeTitleOptions(raw.titleOptions);
 
   const slug = (raw.slug ?? '')
     .toLowerCase()
@@ -83,10 +85,46 @@ export async function generateBlogDraftWithClaude(input: BlogDraftInput): Promis
     || 'ai-article';
 
   return {
-    titleOptions: raw.titleOptions,
+    titleOptions,
     slug,
     outline: raw.outline,
     body: raw.body,
     model: DRAFT_MODEL,
   };
+}
+
+// Claude occasionally returns the titleOptions array field as a (sometimes
+// malformed) JSON-encoded string instead of a real array — observed in
+// production: draft_title became "[" because selectedTitle picked the first
+// CHARACTER of the string. Normalize defensively: real array → JSON.parse →
+// tolerant bracket/quote split → throw.
+function normalizeTitleOptions(value: unknown): [string, string, string] {
+  const toTriple = (arr: unknown[]): [string, string, string] | null => {
+    const strings = arr.filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
+    if (strings.length === 0) return null;
+    return [strings[0], strings[1] ?? strings[0], strings[2] ?? strings[0]];
+  };
+
+  if (Array.isArray(value)) {
+    const triple = toTriple(value);
+    if (triple) return triple;
+  }
+
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) {
+        const triple = toTriple(parsed);
+        if (triple) return triple;
+      }
+    } catch {
+      // fall through to tolerant split (handles unescaped inner quotes)
+    }
+    const inner = value.trim().replace(/^\[\s*"?/, '').replace(/"?\s*\]$/, '');
+    const parts = inner.split(/"\s*,\s*"/).map(part => part.trim()).filter(Boolean);
+    const triple = toTriple(parts);
+    if (triple) return triple;
+  }
+
+  throw new Error('Claude draft generation: invalid titleOptions');
 }
