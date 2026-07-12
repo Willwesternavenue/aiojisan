@@ -21,9 +21,11 @@ export const POST: APIRoute = async ({ request }) => {
   if (authError) return authError;
 
   let articleId: string | null = null;
+  let publishDateOverride: string | null = null;
   try {
-    const body = (await request.json()) as { article_id?: string };
+    const body = (await request.json()) as { article_id?: string; publish_date?: string };
     articleId = body.article_id ?? null;
+    publishDateOverride = body.publish_date ?? null;
   } catch {
     articleId = null;
   }
@@ -39,7 +41,9 @@ export const POST: APIRoute = async ({ request }) => {
 
   if (error || !article) return json({ ok: false, error: 'Article not found' }, 404);
 
-  const publishDate = (article.published_at ?? article.fetched_at) as string;
+  // Optional override lets us spread seed articles across distinct dates instead
+  // of clumping them all on the source's own publish date.
+  const publishDate = (publishDateOverride ?? article.published_at ?? article.fetched_at) as string;
   logger.info('Backfilling article', { articleId, publishDate });
 
   try {

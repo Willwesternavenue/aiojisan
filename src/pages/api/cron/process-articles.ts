@@ -17,6 +17,19 @@ const CARRYOVER_LOOKBACK_HOURS       = 48;
 const CARRYOVER_CANDIDATE_LIMIT      = 50;
 const FLOOR_PUBLISH_THRESHOLD        = 8.0;
 const FLOOR_DROUGHT_HOURS            = 24;
+// Per-pillar floor: guarantee every editorial pillar surfaces periodically.
+// Business/M&A news (overseas-ai-business) scores systematically lower than
+// model/dev news, so the global 8.0 floor never reaches it. A lower pillar
+// floor + a per-pillar drought window keeps each of the four pillars alive.
+const PILLAR_FLOOR_THRESHOLD         = 7.5;
+const PILLAR_FLOOR_DROUGHT_HOURS     = 72;
+const PILLAR_FLOOR_LOOKBACK_HOURS    = 96;
+const ALL_PILLARS: PillarSlug[] = [
+  'physical-ai',
+  'ai-driven-development',
+  'overseas-ai-business',
+  'generative-ai-news',
+];
 
 const logger = createLogger('cron:process-articles');
 const BATCH_SIZE = 20;
@@ -141,7 +154,7 @@ async function publishArticle(
   scores: EditorialScores,
   pillarCategories: ReturnType<typeof detectPillarCategories>,
   publishStats: PublishStats,
-  context: 'carryover' | 'new' | 'daily-floor',
+  context: 'carryover' | 'new' | 'daily-floor' | 'pillar-floor',
 ): Promise<boolean> {
   const result = await generateDraftForArticle(articleId, { autoPublish: true });
   if (!result) {
@@ -391,6 +404,163 @@ async function publishDailyFloorCandidate(
   }
 }
 
+// Most-recent publish time per pillar, read from published drafts' metadata.
+// generated_drafts.created_at is the actual publish-action time (not the WP
+// backdate), so this reflects when each pillar last actually went out.
+async function getPillarLastPublish(
+  db: ReturnType<typeof getAdminClient>,
+): Promise<Record<PillarSlug, number | null>> {
+  const last: Record<PillarSlug, number | null> = {
+    'physical-ai': null,
+    'ai-driven-development': null,
+    'overseas-ai-business': null,
+    'generative-ai-news': null,
+  };
+
+  const { data, error } = await db
+    .from('generated_drafts')
+    .select('created_at, generation_metadata')
+    .eq('status', 'published')
+    .order('created_at', { ascending: false })
+    .limit(300);
+
+  if (error) {
+    logger.warn('Pillar floor: failed to read publish history', { error: error.message });
+    return last;
+  }
+
+  for (const row of data ?? []) {
+    const metadata = row.generation_metadata as { pillarCategories?: string[] } | null;
+    const t = new Date(row.created_at).getTime();
+    for (const pillar of metadata?.pillarCategories ?? []) {
+      // Rows arrive newest-first, so the first time we see a pillar is its latest.
+      if (pillar in last && last[pillar as PillarSlug] === null) {
+        last[pillar as PillarSlug] = t;
+      }
+    }
+  }
+
+  return last;
+}
+
+// Per-pillar floor: for any pillar that hasn't published within the drought
+// window, publish that pillar's best unpublished candidate (>= 7.5) from the
+// lookback window. Runs after the daily floor so a single strong article can
+// satisfy the daily floor while quieter pillars still get their own slot.
+async function publishPillarFloorCandidates(
+  db: ReturnType<typeof getAdminClient>,
+  publishStats: PublishStats,
+): Promise<{ published: number; pillars: PillarSlug[] }> {
+  const lastPublish = await getPillarLastPublish(db);
+  const droughtCutoff = Date.now() - PILLAR_FLOOR_DROUGHT_HOURS * 60 * 60 * 1000;
+  const droughtPillars = ALL_PILLARS.filter(
+    pillar => lastPublish[pillar] === null || (lastPublish[pillar] as number) < droughtCutoff,
+  );
+
+  if (droughtPillars.length === 0) return { published: 0, pillars: [] };
+
+  const lookbackCutoff = new Date(
+    Date.now() - PILLAR_FLOOR_LOOKBACK_HOURS * 60 * 60 * 1000,
+  ).toISOString();
+
+  const { data, error } = await db
+    .from('articles')
+    .select(`
+      id,
+      title,
+      canonical_url,
+      created_at,
+      published_at,
+      sources(name),
+      article_ai_insights(
+        short_summary,
+        long_summary,
+        tags,
+        topics,
+        overall_score,
+        blog_post_potential_score
+      ),
+      article_actions(action_type),
+      generated_drafts(id)
+    `)
+    .gte('created_at', lookbackCutoff)
+    .order('published_at', { ascending: false })
+    .limit(CARRYOVER_CANDIDATE_LIMIT);
+
+  if (error) {
+    logger.warn('Pillar floor: failed to fetch candidates', { error: error.message });
+    return { published: 0, pillars: [] };
+  }
+
+  const eligible = (data ?? [])
+    .map((article: any) => {
+      const insights = Array.isArray(article.article_ai_insights)
+        ? article.article_ai_insights[0]
+        : article.article_ai_insights;
+      const actions = Array.isArray(article.article_actions) ? article.article_actions : [];
+      const alreadyDrafted = actions.some((a: any) => a.action_type === 'generate_blog_draft');
+      const hasDraft = Array.isArray(article.generated_drafts)
+        ? article.generated_drafts.length > 0
+        : Boolean(article.generated_drafts);
+      const sourceName = (article.sources as { name: string } | null)?.name ?? 'Unknown';
+      const pillarCategories = getPillarCategories([
+        article.title,
+        article.canonical_url,
+        sourceName,
+        insights?.short_summary,
+        insights?.long_summary,
+        ...(insights?.topics ?? []),
+        ...(insights?.tags ?? []),
+      ]);
+      return {
+        id: article.id,
+        overallScore: Number(insights?.overall_score ?? 0),
+        blogScore: Number(insights?.blog_post_potential_score ?? 0),
+        pillarCategories,
+        pillarSlugs: pillarCategories.map(category => category.slug),
+        blogPostPotentialScore: insights?.blog_post_potential_score,
+        eligible: Number(insights?.overall_score ?? 0) >= PILLAR_FLOOR_THRESHOLD && !alreadyDrafted && !hasDraft,
+      };
+    })
+    .filter((candidate: any) => candidate.eligible)
+    .sort((a: any, b: any) => b.overallScore - a.overallScore || b.blogScore - a.blogScore);
+
+  const publishedPillars: PillarSlug[] = [];
+  const usedIds = new Set<string>();
+
+  for (const pillar of droughtPillars) {
+    const match = eligible.find(
+      (candidate: any) => candidate.pillarSlugs.includes(pillar) && !usedIds.has(candidate.id),
+    );
+    if (!match) continue;
+
+    logger.info('Pillar floor publish', {
+      articleId: match.id,
+      pillar,
+      score: match.overallScore,
+      droughtHours: PILLAR_FLOOR_DROUGHT_HOURS,
+    });
+
+    try {
+      const didPublish = await publishArticle(
+        match.id,
+        { overallScore: match.overallScore, blogPostPotentialScore: match.blogPostPotentialScore },
+        match.pillarCategories,
+        publishStats,
+        'pillar-floor',
+      );
+      if (didPublish) {
+        usedIds.add(match.id);
+        publishedPillars.push(pillar);
+      }
+    } catch (err) {
+      logger.warn('Pillar floor publish failed', { articleId: match.id, pillar, err: String(err) });
+    }
+  }
+
+  return { published: publishedPillars.length, pillars: publishedPillars };
+}
+
 async function handler(request: Request): Promise<Response> {
   const authError = requireCronAuth(request);
   if (authError) return authError;
@@ -549,8 +719,9 @@ async function handler(request: Request): Promise<Response> {
   }
 
   const dailyFloor = await publishDailyFloorCandidate(db, publishStats);
+  const pillarFloor = await publishPillarFloorCandidates(db, publishStats);
 
-  const result = { ok: true, processed, failed, total: (articles ?? []).length, carryover, dailyFloor, publishStats };
+  const result = { ok: true, processed, failed, total: (articles ?? []).length, carryover, dailyFloor, pillarFloor, publishStats };
   logger.info('Cron process-articles complete', result);
 
   return new Response(JSON.stringify(result), {
