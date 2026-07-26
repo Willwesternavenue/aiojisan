@@ -49,6 +49,12 @@ interface WpCategoryResponse {
   slug: string;
 }
 
+interface WpTagResponse {
+  id: number;
+  name: string;
+  slug: string;
+}
+
 function getAuthHeader(target: WordPressTarget): string {
   const credentials = `${target.username}:${target.appPassword}`;
   return `Basic ${Buffer.from(credentials).toString('base64')}`;
@@ -92,6 +98,7 @@ export async function createWordPressDraft(
   categories?: number[],
   publishDate?: string,
   target: WordPressTarget = resolveWordPressTarget(),
+  tags?: number[],
 ): Promise<{ id: number; editUrl: string }> {
   logger.info('Creating WordPress post', { title, slug, status, publishDate, target: target.name });
 
@@ -104,6 +111,7 @@ export async function createWordPressDraft(
     excerpt,
     ...(target.name === 'aiojisan' ? { featured_media: PLACEHOLDER_MEDIA_ID } : {}),
     ...(categories && categories.length > 0 ? { categories } : {}),
+    ...(tags && tags.length > 0 ? { tags } : {}),
     ...(slug ? { slug } : {}),
     // Backdate the post (WordPress publishes a past-dated post at that date)
     ...(publishDate ? { date_gmt: new Date(publishDate).toISOString().slice(0, 19) } : {}),
@@ -147,6 +155,33 @@ export async function getOrCreateWordPressCategory(
   }, target);
 
   logger.info('WordPress category created', { id: created.id, name, slug, target: target.name });
+  return created.id;
+}
+
+// Same shape as getOrCreateWordPressCategory, but for tags. Tags are looked
+// up by name (WordPress's tag box works purely off free-typed names, with no
+// user-supplied slug), and created if no exact (case-insensitive) match exists.
+export async function getOrCreateWordPressTag(
+  name: string,
+  target: WordPressTarget = resolveWordPressTarget(),
+): Promise<number> {
+  const existing = await wpFetch<WpTagResponse[]>(
+    `/tags?search=${encodeURIComponent(name)}&per_page=100`,
+    {},
+    target,
+  );
+
+  const match = existing.find((tag) => tag.name.toLowerCase() === name.toLowerCase());
+  if (match) {
+    return match.id;
+  }
+
+  const created = await wpFetch<WpTagResponse>('/tags', {
+    method: 'POST',
+    body: JSON.stringify({ name }),
+  }, target);
+
+  logger.info('WordPress tag created', { id: created.id, name, target: target.name });
   return created.id;
 }
 

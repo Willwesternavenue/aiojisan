@@ -14,7 +14,30 @@ export const POST: APIRoute = async (context) => {
   const form = await context.request.formData();
   const topic = String(form.get('topic') ?? '').trim();
   const angleRaw = String(form.get('angle') ?? '').trim();
-  const categoryRaw = String(form.get('category') ?? '').trim();
+  const newCategoryNameRaw = String(form.get('newCategoryName') ?? '').trim();
+  const tagsRaw = String(form.get('tags') ?? '').trim();
+
+  const categoryIds = form.getAll('categoryIds')
+    .map((v) => Number(v))
+    .filter((n) => Number.isFinite(n));
+
+  // The full id→name map for every category rendered in the picker travels
+  // through as a hidden field, so we can label the selected ones without an
+  // extra WordPress round trip. Best-effort: a malformed/missing map just
+  // means the dashboard label falls back to ids only.
+  let categoryNames: string[] = [];
+  try {
+    const raw = String(form.get('categoryNamesJson') ?? '[]');
+    const parsed = JSON.parse(raw) as { id: number; name: string }[];
+    if (Array.isArray(parsed)) {
+      const nameById = new Map(parsed.map((c) => [c.id, c.name]));
+      categoryNames = categoryIds
+        .map((id) => nameById.get(id))
+        .filter((name): name is string => typeof name === 'string');
+    }
+  } catch (err) {
+    logger.warn('Failed to parse categoryNamesJson, falling back to ids only', { err: String(err) });
+  }
 
   if (!topic) {
     return context.redirect('/admin/compose?error=' + encodeURIComponent('トピックを入力してください'));
@@ -24,7 +47,10 @@ export const POST: APIRoute = async (context) => {
     const result = await composeDraftForTopic({
       topic,
       angle: angleRaw || undefined,
-      categorySlug: categoryRaw || undefined,
+      categoryIds: categoryIds.length > 0 ? categoryIds : undefined,
+      categoryNames: categoryNames.length > 0 ? categoryNames : undefined,
+      newCategoryName: newCategoryNameRaw || undefined,
+      tags: tagsRaw || undefined,
     });
 
     if (result.status === 'failed') {

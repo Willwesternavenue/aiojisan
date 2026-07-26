@@ -10,6 +10,7 @@ import {
   createWordPressDraft,
   generateAndAttachFeaturedImage,
   getOrCreateWordPressCategory,
+  getOrCreateWordPressTag,
   publishWordPressPost,
 } from '@/services/wordpress/client';
 import { resolveWordPressTarget } from '@/services/wordpress/target';
@@ -23,7 +24,14 @@ const WP_TARGET = 'ichikarablog' as const;
 export interface ComposeInput {
   topic: string;
   angle?: string;
-  categorySlug?: string;
+  /** Ids of existing ichikarablog categories checked in the picker. */
+  categoryIds?: number[];
+  /** Display names aligned with categoryIds, for the composed_drafts.category label. */
+  categoryNames?: string[];
+  /** A brand-new category name typed alongside the picker (WordPress's "+ new category"). */
+  newCategoryName?: string;
+  /** Comma-separated tag names, as typed into the free-text tag input. */
+  tags?: string;
 }
 
 export interface ComposeResult {
@@ -36,9 +44,21 @@ export interface ComposeResult {
 
 export async function composeDraftForTopic(input: ComposeInput): Promise<ComposeResult> {
   const db = getAdminClient();
-  const { topic, angle, categorySlug } = input;
+  const {
+    topic,
+    angle,
+    categoryIds: selectedCategoryIds = [],
+    categoryNames: selectedCategoryNames = [],
+    newCategoryName,
+    tags: tagsRaw,
+  } = input;
 
-  logger.info('Composing draft', { topic: topic.slice(0, 80), categorySlug });
+  logger.info('Composing draft', {
+    topic: topic.slice(0, 80),
+    categoryIds: selectedCategoryIds,
+    newCategoryName,
+    tags: tagsRaw,
+  });
 
   // 1. Research. Failing research must not kill the draft — we fall back to
   //    model knowledge and say so in the post.
@@ -70,22 +90,48 @@ export async function composeDraftForTopic(input: ComposeInput): Promise<Compose
   const title = draft.titleOptions[0];
   const target = resolveWordPressTarget(WP_TARGET);
 
-  // 4. Category (optional).
-  const categoryIds: number[] = [];
-  if (categorySlug) {
+  // 4. Categories (optional, best-effort). Existing picked ids pass through
+  //    as-is; a typed new-category name is created on ichikarablog and its id
+  //    appended. A failure here must never fail the whole draft.
+  const categoryIds: number[] = [...selectedCategoryIds];
+  const categoryLabelParts: string[] = [...selectedCategoryNames];
+
+  const newCategory = newCategoryName?.trim();
+  if (newCategory) {
     try {
       const categoryId = await getOrCreateWordPressCategory(
-        categorySlug,
-        categorySlug,
+        newCategory,
+        newCategory,
         undefined,
         target,
       );
       categoryIds.push(categoryId);
+      categoryLabelParts.push(newCategory);
     } catch (err) {
-      logger.warn('Category assignment failed, posting without category', {
-        categorySlug,
+      logger.warn('New category creation failed, posting without it', {
+        newCategory,
         err: String(err),
       });
+    }
+  }
+
+  const categoryLabel = categoryLabelParts.length > 0 ? categoryLabelParts.join(', ') : null;
+
+  // 4b. Tags (optional, best-effort). Comma-separated names are resolved to
+  //     ids, creating any tag that doesn't already exist. A failure to
+  //     resolve any one tag must never fail the whole draft.
+  const tagNames = (tagsRaw ?? '')
+    .split(',')
+    .map((t) => t.trim())
+    .filter(Boolean);
+
+  const tagIds: number[] = [];
+  for (const name of tagNames) {
+    try {
+      const tagId = await getOrCreateWordPressTag(name, target);
+      tagIds.push(tagId);
+    } catch (err) {
+      logger.warn('Tag resolution failed, posting without it', { name, err: String(err) });
     }
   }
 
@@ -105,7 +151,7 @@ export async function composeDraftForTopic(input: ComposeInput): Promise<Compose
       source_urls: sources,
       wp_target: WP_TARGET,
       wp_post_id: null,
-      category: categorySlug ?? null,
+      category: categoryLabel,
       status: 'failed',
       error: null,
     })
@@ -134,6 +180,7 @@ export async function composeDraftForTopic(input: ComposeInput): Promise<Compose
       categoryIds.length > 0 ? categoryIds : undefined,
       undefined,
       target,
+      tagIds.length > 0 ? tagIds : undefined,
     );
     wpPostId = post.id;
   } catch (err) {
