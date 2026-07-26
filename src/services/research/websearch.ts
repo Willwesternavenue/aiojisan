@@ -35,11 +35,12 @@ export async function researchTopic(topic: string, angle?: string): Promise<Topi
     model: RESEARCH_MODEL,
     max_tokens: 4096,
     tools: [
+      // SDK's server-side web-search tool type (not the custom-function `Tool` type).
       {
         type: 'web_search_20250305',
         name: 'web_search',
         max_uses: MAX_SEARCHES,
-      } as unknown as Anthropic.Tool,
+      } satisfies Anthropic.WebSearchTool20250305,
     ],
     messages: [{ role: 'user', content: prompt }],
   });
