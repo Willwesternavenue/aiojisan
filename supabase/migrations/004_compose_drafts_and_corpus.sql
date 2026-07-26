@@ -8,6 +8,9 @@ CREATE INDEX IF NOT EXISTS blog_style_chunks_corpus_idx
 
 -- Extend the vector search with an optional corpus filter.
 -- p_corpus = NULL keeps the previous behaviour (search every corpus).
+-- Adding a parameter creates an overload rather than replacing the 3-arg
+-- function from 001, which would make existing 3-argument calls ambiguous.
+DROP FUNCTION IF EXISTS match_blog_chunks(VECTOR(1536), FLOAT, INT);
 CREATE OR REPLACE FUNCTION match_blog_chunks(
   query_embedding VECTOR(1536),
   match_threshold FLOAT DEFAULT 0.7,
