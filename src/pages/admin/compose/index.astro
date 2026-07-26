@@ -45,6 +45,12 @@ const error = Astro.url.searchParams.get('error');
 
 const ichikaraBase = (import.meta.env.ICHIKARA_WP_BASE_URL ?? '').replace(/\/$/, '');
 
+// Only trust `link` as a real published post URL — otherwise it could be a
+// crafted scheme (e.g. `javascript:`) rendered as a clickable admin link.
+const isSafePublishedLink = !!publishedLink && (
+  ichikaraBase ? publishedLink.startsWith(ichikaraBase) : publishedLink.startsWith('https://')
+);
+
 const STATUS_LABEL: Record<string, string> = {
   draft: '下書き',
   published: '公開済み',
@@ -62,7 +68,7 @@ const STATUS_LABEL: Record<string, string> = {
   {published && (
     <div class="mb-4 px-4 py-2 rounded-md bg-score-highBg text-score-high text-sm">
       記事を公開しました。
-      {publishedLink && (
+      {isSafePublishedLink && (
         <>
           {' '}
           <a href={publishedLink} target="_blank" rel="noopener noreferrer" class="underline">
