@@ -41,8 +41,11 @@ export async function importIchikaraPosts(
     const res = await fetch(url);
     if (!res.ok) {
       const body = await res.text();
-      // WordPress 400s when paging past the end — that means we are done.
-      if (res.status === 400) {
+      // WordPress returns 400 rest_post_invalid_page_number when paging past
+      // the end — that means we are done. Any other non-OK response (a
+      // transient error, auth failure, etc.) must still throw, or a
+      // mid-backlog failure would silently truncate the resumable cursor.
+      if (res.status === 400 && body.includes('invalid_page_number')) {
         logger.info('Reached the end of ichikarablog posts', { page });
         nextPage = null;
         break;
