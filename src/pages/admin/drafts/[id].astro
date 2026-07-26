@@ -1,0 +1,241 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import { getAdminClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/logger';
+
+const logger = createLogger('admin:draft-detail');
+
+const { id } = Astro.params;
+if (!id) return Astro.redirect('/admin/drafts');
+
+type DraftDetail = {
+  id: string;
+  article_id: string | null;
+  draft_title: string;
+  draft_outline: string | null;
+  draft_body: string;
+  status: string;
+  wordpress_post_id: number | null;
+  generation_metadata: Record<string, unknown> | null;
+  created_at: string;
+  updated_at: string | null;
+  articles: { title: string; canonical_url: string } | null;
+};
+
+let draft: DraftDetail | null = null;
+try {
+  const db = getAdminClient();
+  const { data, error } = await db
+    .from('generated_drafts')
+    .select(
+      'id, article_id, draft_title, draft_outline, draft_body, status, wordpress_post_id, generation_metadata, created_at, updated_at, articles(title, canonical_url)',
+    )
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) {
+    logger.error('Failed to load draft', { id, err: error.message });
+  } else {
+    draft = data as unknown as DraftDetail | null;
+  }
+} catch (err) {
+  logger.error('Unexpected error loading draft', { id, err: String(err) });
+}
+
+if (!draft) return Astro.redirect('/admin/drafts?missing=1');
+
+const metadata = (draft.generation_metadata ?? {}) as {
+  model?: string;
+  titleOptions?: unknown;
+  styleChunksUsed?: number;
+  auto_generated?: boolean;
+  auto_published?: boolean;
+  backfilled?: boolean;
+  pillarCategories?: string[];
+};
+
+// titleOptions has historically been stored as an array, but a provider bug
+// once wrote it as a JSON string — tolerate both rather than crashing the page.
+function readTitleOptions(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === 'string');
+  if (typeof value === 'string') {
+    try {
+      const parsed = JSON.parse(value);
+      if (Array.isArray(parsed)) return parsed.filter((v): v is string => typeof v === 'string');
+    } catch {
+      // fall through — show nothing rather than a broken list
+    }
+  }
+  return [];
+}
+
+const titleOptions = readTitleOptions(metadata.titleOptions);
+const wpBase = (import.meta.env.WORDPRESS_BASE_URL ?? '').replace(/\/$/, '');
+const created = new Date(draft.created_at).toLocaleString('ja-JP');
+const updated = draft.updated_at ? new Date(draft.updated_at).toLocaleString('ja-JP') : null;
+const bodyChars = draft.draft_body.length;
+
+const STATUS_STYLE: Record<string, string> = {
+  sent_to_wordpress: 'bg-blue-50 text-blue-600',
+  published: 'bg-score-highBg text-score-high',
+};
+---
+
+<AdminLayout title="下書き詳細" activeNav="drafts">
+  <div class="mb-5">
+    <a href="/admin/drafts" class="text-sm text-text-muted hover:text-accent transition-colors">
+      ← 下書き履歴
+    </a>
+  </div>
+
+  <!-- Header -->
+  <section class="bg-surface border border-border rounded-lg p-5 mb-5">
+    <div class="flex items-start justify-between gap-4 mb-3">
+      <h1 class="text-lg font-semibold text-text-primary leading-snug">{draft.draft_title}</h1>
+      <span class:list={[
+        'inline-block px-2 py-0.5 rounded text-xs flex-shrink-0',
+        STATUS_STYLE[draft.status] ?? 'bg-[#F0F0EE] text-text-secondary',
+      ]}>
+        {draft.status}
+      </span>
+    </div>
+
+    <dl class="grid grid-cols-1 sm:grid-cols-2 gap-x-8 gap-y-1.5 text-sm">
+      <div class="flex justify-between gap-3">
+        <dt class="text-text-secondary">生成日時</dt>
+        <dd class="text-text-primary font-mono text-xs">{created}</dd>
+      </div>
+      {updated && updated !== created && (
+        <div class="flex justify-between gap-3">
+          <dt class="text-text-secondary">更新日時</dt>
+          <dd class="text-text-primary font-mono text-xs">{updated}</dd>
+        </div>
+      )}
+      <div class="flex justify-between gap-3">
+        <dt class="text-text-secondary">モデル</dt>
+        <dd class="text-text-primary font-mono text-xs">{metadata.model ?? '—'}</dd>
+      </div>
+      <div class="flex justify-between gap-3">
+        <dt class="text-text-secondary">本文の長さ</dt>
+        <dd class="text-text-primary font-mono text-xs">{bodyChars.toLocaleString()} 字</dd>
+      </div>
+      <div class="flex justify-between gap-3">
+        <dt class="text-text-secondary">文体サンプル使用数</dt>
+        <dd class="text-text-primary font-mono text-xs">{metadata.styleChunksUsed ?? '—'}</dd>
+      </div>
+      {metadata.pillarCategories && metadata.pillarCategories.length > 0 && (
+        <div class="flex justify-between gap-3">
+          <dt class="text-text-secondary">カテゴリ</dt>
+          <dd class="text-text-primary text-xs">{metadata.pillarCategories.join(' / ')}</dd>
+        </div>
+      )}
+    </dl>
+
+    <div class="flex items-center gap-2 mt-4 flex-wrap">
+      {draft.wordpress_post_id && wpBase && (
+        <a
+          href={`${wpBase}/wp-admin/post.php?post=${draft.wordpress_post_id}&action=edit`}
+          target="_blank" rel="noopener noreferrer"
+          class="text-xs text-text-secondary hover:text-text-primary border border-border rounded px-3 py-1.5 hover:bg-[#F0F0EE] transition-colors"
+        >
+          WPで開く ↗
+        </a>
+      )}
+      {draft.article_id && (
+        <a
+          href={`/admin/feed/${draft.article_id}`}
+          class="text-xs text-accent border border-border rounded px-3 py-1.5 hover:bg-[#F0F0EE] transition-colors"
+        >
+          元記事の分析を見る
+        </a>
+      )}
+      {draft.wordpress_post_id && draft.article_id && (
+        <form method="POST" action="/api/admin/drafts/regenerate">
+          <input type="hidden" name="article_id" value={draft.article_id} />
+          <button
+            type="submit"
+            class="text-xs text-accent border border-border rounded px-3 py-1.5 hover:bg-[#F0F0EE] transition-colors"
+          >
+            本文を再生成
+          </button>
+        </form>
+      )}
+    </div>
+  </section>
+
+  <!-- Source article -->
+  {draft.articles && (
+    <section class="bg-surface border border-border rounded-lg p-5 mb-5">
+      <h2 class="text-xs font-medium text-text-muted uppercase tracking-widest mb-2">元記事</h2>
+      <p class="text-sm text-text-primary mb-1">{draft.articles.title}</p>
+      <a
+        href={draft.articles.canonical_url}
+        target="_blank" rel="noopener noreferrer"
+        class="text-xs text-accent hover:underline break-all"
+      >
+        {draft.articles.canonical_url}
+      </a>
+    </section>
+  )}
+
+  <!-- Title options -->
+  {titleOptions.length > 0 && (
+    <section class="bg-surface border border-border rounded-lg p-5 mb-5">
+      <h2 class="text-xs font-medium text-text-muted uppercase tracking-widest mb-3">タイトル案</h2>
+      <ol class="space-y-1.5">
+        {titleOptions.map((option, i) => (
+          <li class="text-sm flex gap-2">
+            <span class="text-text-muted font-mono text-xs pt-0.5">{i + 1}</span>
+            <span class:list={[
+              i === 0 ? 'text-text-primary font-medium' : 'text-text-secondary',
+            ]}>
+              {option}{i === 0 && <span class="text-xs text-accent ml-2">採用</span>}
+            </span>
+          </li>
+        ))}
+      </ol>
+    </section>
+  )}
+
+  <!-- Outline -->
+  {draft.draft_outline && (
+    <section class="bg-surface border border-border rounded-lg p-5 mb-5">
+      <h2 class="text-xs font-medium text-text-muted uppercase tracking-widest mb-3">アウトライン</h2>
+      <pre class="text-sm text-text-secondary whitespace-pre-wrap font-sans leading-relaxed">{draft.draft_outline}</pre>
+    </section>
+  )}
+
+  <!-- Body -->
+  <section class="bg-surface border border-border rounded-lg p-5">
+    <div class="flex items-center justify-between mb-3">
+      <h2 class="text-xs font-medium text-text-muted uppercase tracking-widest">本文（マークダウン）</h2>
+      <button
+        type="button"
+        id="copy-body"
+        class="text-xs text-accent border border-border rounded px-3 py-1 hover:bg-[#F0F0EE] transition-colors"
+      >
+        本文をコピー
+      </button>
+    </div>
+    <pre
+      id="draft-body"
+      class="text-sm text-text-primary whitespace-pre-wrap font-sans leading-relaxed">{draft.draft_body}</pre>
+  </section>
+</AdminLayout>
+
+<script>
+  const button = document.getElementById('copy-body') as HTMLButtonElement | null;
+  const body = document.getElementById('draft-body');
+
+  button?.addEventListener('click', async () => {
+    if (!body?.textContent) return;
+    try {
+      await navigator.clipboard.writeText(body.textContent);
+      const original = button.textContent;
+      button.textContent = 'コピーしました';
+      setTimeout(() => { button.textContent = original; }, 1500);
+    } catch {
+      button.textContent = 'コピーできませんでした';
+    }
+  });
+</script>
