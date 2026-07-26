@@ -206,11 +206,15 @@ export async function generateAndAttachFeaturedImage(
 ): Promise<void> {
   logger.info('Generating featured image', { postId, slug, pillar, target: target.name });
 
-  const imagePrompt =
-    `テックブログのヘッダー画像を生成してください。` +
-    `テーマ：「${title}」。` +
-    `補足：${summary.slice(0, 150)}。` +
-    `スタイル：明るい配色のフラットイラスト、白い背景、モダンなテクノロジーモチーフ。日本語テキスト使用可。顔なし、ロゴなし。`;
+  const imagePrompt = target.name === 'aiojisan'
+    ? `テックブログのヘッダー画像を生成してください。` +
+      `テーマ：「${title}」。` +
+      `補足：${summary.slice(0, 150)}。` +
+      `スタイル：明るい配色のフラットイラスト、白い背景、モダンなテクノロジーモチーフ。日本語テキスト使用可。顔なし、ロゴなし。`
+    : `個人ブログのヘッダー画像を生成してください。` +
+      `テーマ：「${title}」。` +
+      `補足：${summary.slice(0, 150)}。` +
+      `スタイル：明るい配色のフラットイラスト、白い背景、テーマに合った落ち着いた汎用的なモチーフ（特定の業界・テクノロジーのモチーフは避ける）。日本語テキスト使用可。顔なし、ロゴなし。`;
 
   const { buffer: imageBuffer, provider, model } = await generateFeaturedImageBuffer(
     imagePrompt,

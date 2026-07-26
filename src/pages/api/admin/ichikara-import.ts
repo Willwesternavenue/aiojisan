@@ -16,7 +16,7 @@ export const POST: APIRoute = async ({ request }) => {
   let startPage = 1;
   try {
     const body = (await request.json()) as { limit?: number; start_page?: number };
-    if (typeof body.limit === 'number') limit = Math.min(Math.max(1, body.limit), 5);
+    if (typeof body.limit === 'number') limit = Math.min(Math.max(1, body.limit), 2);
     if (typeof body.start_page === 'number') startPage = Math.max(1, body.start_page);
   } catch {
     // defaults are fine

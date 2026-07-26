@@ -73,7 +73,10 @@ export async function retrieveStyleChunks(
 export async function getStyleChunksForDraft(
   articleTitle: string,
   topics: string[],
-  corpus?: string,
+  // Default to the AIおじさん corpus so existing 2-argument callers (the news
+  // pipeline) never pull personal-blog style samples. Pass 'ichikarablog'
+  // explicitly (as the compose path does) to opt into that corpus instead.
+  corpus: string = 'aiojisan',
 ): Promise<string[]> {
   const query = `${articleTitle} ${topics.join(' ')}`;
 
@@ -84,7 +87,7 @@ export async function getStyleChunksForDraft(
   });
 
   if (chunks.length === 0) {
-    logger.info('No style chunks found for draft', { corpus: corpus ?? '(all)' });
+    logger.info('No style chunks found for draft', { corpus });
     return [];
   }
 

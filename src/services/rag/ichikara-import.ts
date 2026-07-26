@@ -2,7 +2,7 @@
 // Runs page by page so a serverless invocation never has to embed ~1000 posts
 // in one go — the caller keeps posting until nextPage is null.
 
-import { resolveWordPressTarget } from '@/services/wordpress/target';
+import { getEnv } from '@/lib/env';
 import { createLogger } from '@/lib/logger';
 import { ingestBlogPosts, type RawBlogPost } from './ingest';
 
@@ -25,8 +25,14 @@ export async function importIchikaraPosts(
   options: { limit?: number; startPage?: number } = {},
 ): Promise<{ posts: number; chunks: number; nextPage: number | null }> {
   const { limit = 1, startPage = 1 } = options;
-  const target = resolveWordPressTarget('ichikarablog');
-  const apiBase = `${target.baseUrl.replace(/\/$/, '')}/wp-json/wp/v2`;
+  // This importer only reads public posts over an unauthenticated fetch, so
+  // it needs the base URL alone — it must not fail on missing WordPress
+  // credentials (username/app password) it never sends.
+  const baseUrl = getEnv().ICHIKARA_WP_BASE_URL;
+  if (!baseUrl) {
+    throw new Error('ICHIKARA_WP_BASE_URL is not set; the ichikarablog importer requires only the base URL');
+  }
+  const apiBase = `${baseUrl.replace(/\/$/, '')}/wp-json/wp/v2`;
 
   let page = startPage;
   let importedPosts = 0;

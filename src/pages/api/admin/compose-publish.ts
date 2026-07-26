@@ -19,8 +19,10 @@ export const POST: APIRoute = async (context) => {
   }
 
   try {
-    await publishComposedDraft(id);
-    return context.redirect('/admin/compose?published=1');
+    const { link } = await publishComposedDraft(id);
+    const params = new URLSearchParams({ published: '1' });
+    if (link) params.set('link', link);
+    return context.redirect('/admin/compose?' + params.toString());
   } catch (err) {
     logger.error('Publish failed', { id, err: String(err) });
     return context.redirect(
