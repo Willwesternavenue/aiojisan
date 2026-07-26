@@ -4,7 +4,7 @@
 import { getAdminClient } from '@/lib/supabase/server';
 import { researchTopic } from '@/services/research/websearch';
 import { getStyleChunksForDraft } from '@/services/rag/retrieval';
-import { ICHIKARA_CORPUS } from '@/services/rag/ichikara-import';
+import { ICHIKARA_CORPUS } from '@/services/rag/blog-import';
 import { generateTopicDraftWithClaude } from '@/services/ai/anthropic';
 import {
   createWordPressDraft,
