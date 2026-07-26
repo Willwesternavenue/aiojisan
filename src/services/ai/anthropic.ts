@@ -1,8 +1,8 @@
 import Anthropic from '@anthropic-ai/sdk';
 import { getAnthropicKey } from '@/lib/env';
 import { createLogger } from '@/lib/logger';
-import { GENERATE_BLOG_DRAFT_PROMPT } from './prompts';
-import type { BlogDraftInput, BlogDraftOutput } from '@/types/ai';
+import { GENERATE_BLOG_DRAFT_PROMPT, GENERATE_TOPIC_DRAFT_PROMPT } from './prompts';
+import type { BlogDraftInput, BlogDraftOutput, TopicDraftInput } from '@/types/ai';
 
 const logger = createLogger('anthropic');
 
@@ -127,4 +127,74 @@ function normalizeTitleOptions(value: unknown): [string, string, string] {
   }
 
   throw new Error('Claude draft generation: invalid titleOptions');
+}
+
+// Topic-directed draft for the personal blog. Same structured-output tool as
+// the news draft, but the prompt is voice-first and research-backed instead of
+// being anchored to a source article.
+export async function generateTopicDraftWithClaude(input: TopicDraftInput): Promise<BlogDraftOutput> {
+  const client = new Anthropic({ apiKey: getAnthropicKey() });
+
+  const styleChunkText = input.styleChunks.length > 0
+    ? input.styleChunks.map((c, i) => `[サンプル${i + 1}]\n${c}`).join('\n\n')
+    : '（文体サンプルなし）';
+
+  const sourceList = input.sources.length > 0
+    ? input.sources.map(s => `- [${s.title}](${s.url})`).join('\n')
+    : '（参照した情報源なし）';
+
+  const prompt = fillTemplate(GENERATE_TOPIC_DRAFT_PROMPT, {
+    topic: input.topic,
+    angle: input.angle ?? '（指定なし）',
+    findings: input.findings || '（下調べの結果なし）',
+    sourceList,
+    styleChunks: styleChunkText,
+  });
+
+  logger.info('Generating topic draft with Claude', {
+    topic: input.topic.slice(0, 80),
+    model: DRAFT_MODEL,
+    sources: input.sources.length,
+    styleChunks: input.styleChunks.length,
+  });
+
+  const message = await client.messages.create({
+    model: DRAFT_MODEL,
+    max_tokens: 8192,
+    tools: [DRAFT_TOOL],
+    tool_choice: { type: 'tool', name: 'submit_blog_draft' },
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  if (message.stop_reason === 'max_tokens') {
+    logger.warn('Topic draft hit max_tokens — output likely truncated', {
+      topic: input.topic.slice(0, 80),
+      model: DRAFT_MODEL,
+    });
+  }
+
+  const toolUse = message.content.find((block) => block.type === 'tool_use');
+  if (!toolUse || toolUse.type !== 'tool_use') {
+    logger.error('Claude did not return the topic draft tool call', { stopReason: message.stop_reason });
+    throw new Error('Claude topic draft generation: no structured output');
+  }
+
+  const raw = toolUse.input as { titleOptions: unknown; slug: string; outline: string; body: string };
+
+  const titleOptions = normalizeTitleOptions(raw.titleOptions);
+
+  const slug = (raw.slug ?? '')
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '')
+    || 'blog-post';
+
+  return {
+    titleOptions,
+    slug,
+    outline: raw.outline,
+    body: raw.body,
+    model: DRAFT_MODEL,
+  };
 }
