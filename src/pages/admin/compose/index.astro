@@ -1,6 +1,9 @@
 ---
 import AdminLayout from '@/layouts/AdminLayout.astro';
 import { getAdminClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/logger';
+
+const logger = createLogger('admin:compose');
 
 type ComposedRow = {
   id: string;
@@ -15,13 +18,25 @@ type ComposedRow = {
 };
 
 const db = getAdminClient();
-const { data } = await db
-  .from('composed_drafts')
-  .select('id, topic, title, source_urls, wp_post_id, status, error, created_at, published_at')
-  .order('created_at', { ascending: false })
-  .limit(50);
+let rows: ComposedRow[] = [];
+let loadFailed = false;
+try {
+  const { data, error: queryError } = await db
+    .from('composed_drafts')
+    .select('id, topic, title, source_urls, wp_post_id, status, error, created_at, published_at')
+    .order('created_at', { ascending: false })
+    .limit(50);
 
-const rows = (data ?? []) as ComposedRow[];
+  if (queryError) {
+    logger.error('Failed to load composed_drafts', { err: queryError.message });
+    loadFailed = true;
+  } else {
+    rows = (data ?? []) as ComposedRow[];
+  }
+} catch (err) {
+  logger.error('Unexpected error loading composed_drafts', { err: String(err) });
+  loadFailed = true;
+}
 
 const composed = Astro.url.searchParams.get('composed') === '1';
 const published = Astro.url.searchParams.get('published') === '1';
@@ -52,6 +67,12 @@ const STATUS_LABEL: Record<string, string> = {
   {error && (
     <div class="mb-4 px-4 py-2 rounded-md bg-score-lowBg text-score-low text-sm">
       {error}
+    </div>
+  )}
+
+  {loadFailed && (
+    <div class="mb-4 px-4 py-2 rounded-md bg-[#F0F0EE] text-text-secondary text-sm">
+      下書き一覧を読み込めませんでした。しばらくしてから再度お試しください。
     </div>
   )}
 
@@ -183,6 +204,7 @@ const STATUS_LABEL: Record<string, string> = {
   const form = document.getElementById('compose-form');
   const button = document.getElementById('compose-submit') as HTMLButtonElement | null;
   const progress = document.getElementById('compose-progress');
+  const initialButtonLabel = button?.textContent ?? '';
 
   form?.addEventListener('submit', () => {
     if (button) {
@@ -190,5 +212,17 @@ const STATUS_LABEL: Record<string, string> = {
       button.textContent = '生成中…';
     }
     progress?.classList.remove('hidden');
+  });
+
+  // If the page is restored from bfcache (e.g. via the back button) while a
+  // previous submit had disabled the button, reset it — nothing is actually
+  // in flight for this restored page.
+  window.addEventListener('pageshow', (event) => {
+    if (!event.persisted) return;
+    if (button) {
+      button.disabled = false;
+      button.textContent = initialButtonLabel;
+    }
+    progress?.classList.add('hidden');
   });
 </script>
