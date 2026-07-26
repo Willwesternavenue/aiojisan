@@ -1,12 +1,17 @@
 // API: Regenerate the body of an existing article and overwrite its WP post
 
 import type { APIRoute } from 'astro';
+import { requireAdminSession } from '@/lib/auth';
 import { regenerateDraftForArticle } from '@/services/drafts/regenerate';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('api:regenerate-draft');
 
-export const POST: APIRoute = async ({ request, redirect }) => {
+export const POST: APIRoute = async (context) => {
+  const authError = await requireAdminSession(context);
+  if (authError) return authError;
+
+  const { request, redirect } = context;
   const formData = await request.formData();
   const articleId = formData.get('article_id') as string;
 

@@ -1,13 +1,18 @@
 // API: Manually trigger ingestion for a single source
 
 import type { APIRoute } from 'astro';
+import { requireAdminSession } from '@/lib/auth';
 import { getAdminClient } from '@/lib/supabase/server';
 import { runSourceIngestion } from '@/services/ingestion/pipeline';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('api:sources-run');
 
-export const POST: APIRoute = async ({ request, redirect }) => {
+export const POST: APIRoute = async (context) => {
+  const authError = await requireAdminSession(context);
+  if (authError) return authError;
+
+  const { request, redirect } = context;
   const formData = await request.formData();
   const sourceId = formData.get('source_id') as string;
 

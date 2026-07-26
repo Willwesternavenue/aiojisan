@@ -1,6 +1,7 @@
 // API: Update a source
 
 import type { APIRoute } from 'astro';
+import { requireAdminSession } from '@/lib/auth';
 import { getAdminClient } from '@/lib/supabase/server';
 import { z } from 'zod';
 
@@ -14,7 +15,11 @@ const sourceSchema = z.object({
   enabled: z.string().optional(),
 });
 
-export const POST: APIRoute = async ({ params, request, redirect }) => {
+export const POST: APIRoute = async (context) => {
+  const authError = await requireAdminSession(context);
+  if (authError) return authError;
+
+  const { params, request, redirect } = context;
   const sourceId = params.id;
 
   if (!sourceId) {

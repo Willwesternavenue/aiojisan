@@ -1,12 +1,17 @@
 // API: Generate blog draft for an article
 
 import type { APIRoute } from 'astro';
+import { requireAdminSession } from '@/lib/auth';
 import { generateDraftForArticle } from '@/services/drafts/generate';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('api:generate-draft');
 
-export const POST: APIRoute = async ({ request, redirect }) => {
+export const POST: APIRoute = async (context) => {
+  const authError = await requireAdminSession(context);
+  if (authError) return authError;
+
+  const { request, redirect } = context;
   const formData = await request.formData();
   const articleId = formData.get('article_id') as string;
 
