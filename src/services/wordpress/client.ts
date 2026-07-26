@@ -3,6 +3,7 @@
 
 import { marked } from 'marked';
 import { getEnv } from '@/lib/env';
+import { resolveWordPressTarget, type WordPressTarget } from './target';
 import { generateFeaturedImageBuffer } from '@/services/images/provider';
 import { createLogger } from '@/lib/logger';
 
@@ -48,26 +49,25 @@ interface WpCategoryResponse {
   slug: string;
 }
 
-function getAuthHeader(): string {
-  const env = getEnv();
-  const credentials = `${env.WORDPRESS_USERNAME}:${env.WORDPRESS_APP_PASSWORD}`;
+function getAuthHeader(target: WordPressTarget): string {
+  const credentials = `${target.username}:${target.appPassword}`;
   return `Basic ${Buffer.from(credentials).toString('base64')}`;
 }
 
-function getApiBase(): string {
-  const env = getEnv();
-  return `${env.WORDPRESS_BASE_URL.replace(/\/$/, '')}/wp-json/wp/v2`;
+function getApiBase(target: WordPressTarget): string {
+  return `${target.baseUrl.replace(/\/$/, '')}/wp-json/wp/v2`;
 }
 
 async function wpFetch<T>(
   path: string,
   options: RequestInit = {},
+  target: WordPressTarget = resolveWordPressTarget(),
 ): Promise<T> {
-  const url = `${getApiBase()}${path}`;
+  const url = `${getApiBase(target)}${path}`;
   const res = await fetch(url, {
     ...options,
     headers: {
-      'Authorization': getAuthHeader(),
+      'Authorization': getAuthHeader(target),
       'Content-Type': 'application/json',
       ...(options.headers ?? {}),
     },
@@ -75,7 +75,7 @@ async function wpFetch<T>(
 
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`WordPress API error ${res.status}: ${body}`);
+    throw new Error(`WordPress API error ${res.status} (${target.name}): ${body}`);
   }
 
   return res.json() as Promise<T>;
@@ -91,8 +91,9 @@ export async function createWordPressDraft(
   status: 'draft' | 'publish' = 'draft',
   categories?: number[],
   publishDate?: string,
+  target: WordPressTarget = resolveWordPressTarget(),
 ): Promise<{ id: number; editUrl: string }> {
-  logger.info('Creating WordPress post', { title, slug, status, publishDate });
+  logger.info('Creating WordPress post', { title, slug, status, publishDate, target: target.name });
 
   const htmlBody = markdownToHtml(body);
 
@@ -101,7 +102,7 @@ export async function createWordPressDraft(
     content: htmlBody,
     status,
     excerpt,
-    featured_media: PLACEHOLDER_MEDIA_ID,
+    ...(target.name === 'aiojisan' ? { featured_media: PLACEHOLDER_MEDIA_ID } : {}),
     ...(categories && categories.length > 0 ? { categories } : {}),
     ...(slug ? { slug } : {}),
     // Backdate the post (WordPress publishes a past-dated post at that date)
@@ -111,12 +112,11 @@ export async function createWordPressDraft(
   const post = await wpFetch<WpPostResponse>('/posts', {
     method: 'POST',
     body: JSON.stringify(payload),
-  });
+  }, target);
 
-  const env = getEnv();
-  const editUrl = `${env.WORDPRESS_BASE_URL}/wp-admin/post.php?post=${post.id}&action=edit`;
+  const editUrl = `${target.baseUrl}/wp-admin/post.php?post=${post.id}&action=edit`;
 
-  logger.info('Post created', { id: post.id, status, editUrl });
+  logger.info('Post created', { id: post.id, status, editUrl, target: target.name });
 
   return { id: post.id, editUrl };
 }
@@ -125,9 +125,12 @@ export async function getOrCreateWordPressCategory(
   name: string,
   slug: string,
   description?: string,
+  target: WordPressTarget = resolveWordPressTarget(),
 ): Promise<number> {
   const existing = await wpFetch<WpCategoryResponse[]>(
     `/categories?slug=${encodeURIComponent(slug)}&per_page=1`,
+    {},
+    target,
   );
 
   if (existing[0]) {
@@ -141,9 +144,9 @@ export async function getOrCreateWordPressCategory(
       slug,
       ...(description ? { description } : {}),
     }),
-  });
+  }, target);
 
-  logger.info('WordPress category created', { id: created.id, name, slug });
+  logger.info('WordPress category created', { id: created.id, name, slug, target: target.name });
   return created.id;
 }
 
@@ -151,21 +154,40 @@ export async function updateWordPressDraft(
   postId: number,
   title: string,
   body: string,
+  target: WordPressTarget = resolveWordPressTarget(),
 ): Promise<void> {
-  logger.info('Updating WordPress draft', { postId });
+  logger.info('Updating WordPress draft', { postId, target: target.name });
 
   await wpFetch<WpPostResponse>(`/posts/${postId}`, {
     method: 'POST',
     body: JSON.stringify({ title, content: markdownToHtml(body) }),
-  });
+  }, target);
 }
 
-export async function testWordPressConnection(): Promise<boolean> {
+// Flip an existing draft to published. Used by the compose dashboard so the
+// user never has to log into WordPress (app-password REST bypasses 2FA).
+export async function publishWordPressPost(
+  postId: number,
+  target: WordPressTarget = resolveWordPressTarget(),
+): Promise<{ link: string }> {
+  logger.info('Publishing WordPress post', { postId, target: target.name });
+
+  const post = await wpFetch<WpPostResponse & { link: string }>(`/posts/${postId}`, {
+    method: 'POST',
+    body: JSON.stringify({ status: 'publish' }),
+  }, target);
+
+  return { link: post.link };
+}
+
+export async function testWordPressConnection(
+  target: WordPressTarget = resolveWordPressTarget(),
+): Promise<boolean> {
   try {
-    await wpFetch<unknown>('/users/me');
+    await wpFetch<unknown>('/users/me', {}, target);
     return true;
   } catch (err) {
-    logger.error('WordPress connection test failed', { err: String(err) });
+    logger.error('WordPress connection test failed', { err: String(err), target: target.name });
     return false;
   }
 }
@@ -180,8 +202,9 @@ export async function generateAndAttachFeaturedImage(
   summary: string,
   slug: string,
   pillar?: string,
+  target: WordPressTarget = resolveWordPressTarget(),
 ): Promise<void> {
-  logger.info('Generating featured image', { postId, slug, pillar });
+  logger.info('Generating featured image', { postId, slug, pillar, target: target.name });
 
   const imagePrompt =
     `テックブログのヘッダー画像を生成してください。` +
@@ -197,12 +220,12 @@ export async function generateAndAttachFeaturedImage(
 
   // Upload to WordPress media library
   const filename = `${slug}.png`;
-  const mediaUrl = `${getApiBase()}/media`;
+  const mediaUrl = `${getApiBase(target)}/media`;
 
   const mediaRes = await fetch(mediaUrl, {
     method: 'POST',
     headers: {
-      'Authorization': getAuthHeader(),
+      'Authorization': getAuthHeader(target),
       'Content-Disposition': `attachment; filename="${filename}"`,
       'Content-Type': 'image/png',
     },
@@ -221,7 +244,7 @@ export async function generateAndAttachFeaturedImage(
   await wpFetch<WpPostResponse>(`/posts/${postId}`, {
     method: 'POST',
     body: JSON.stringify({ featured_media: media.id }),
-  });
+  }, target);
 
   logger.info('Featured image attached', { postId, mediaId: media.id });
 }
