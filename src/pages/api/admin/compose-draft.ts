@@ -36,6 +36,8 @@ export const POST: APIRoute = async (context) => {
     return context.redirect('/admin/compose?composed=1');
   } catch (err) {
     logger.error('Compose failed', { err: String(err) });
-    return context.redirect('/admin/compose?error=' + encodeURIComponent(String(err).slice(0, 200)));
+    return context.redirect(
+      '/admin/compose?error=' + encodeURIComponent('下書きの生成中にエラーが発生しました'),
+    );
   }
 };

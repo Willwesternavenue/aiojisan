@@ -23,6 +23,8 @@ export const POST: APIRoute = async (context) => {
     return context.redirect('/admin/compose?published=1');
   } catch (err) {
     logger.error('Publish failed', { id, err: String(err) });
-    return context.redirect('/admin/compose?error=' + encodeURIComponent(String(err).slice(0, 200)));
+    return context.redirect(
+      '/admin/compose?error=' + encodeURIComponent('公開処理中にエラーが発生しました'),
+    );
   }
 };

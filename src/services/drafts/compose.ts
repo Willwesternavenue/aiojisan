@@ -89,7 +89,37 @@ export async function composeDraftForTopic(input: ComposeInput): Promise<Compose
     }
   }
 
-  // 5. Post as a DRAFT on ichikarablog.
+  // 5. Record the draft in the DB first, so it is the system of record even
+  //    if we crash before (or during) the WordPress call. `status: 'failed'`
+  //    here means "not yet successfully posted" — the terminal state if we
+  //    die before step 6 succeeds, and already the status the UI treats as
+  //    retryable.
+  const { data: inserted, error: insertError } = await db
+    .from('composed_drafts')
+    .insert({
+      topic,
+      angle: angle ?? null,
+      title,
+      outline: draft.outline,
+      body: draft.body,
+      source_urls: sources,
+      wp_target: WP_TARGET,
+      wp_post_id: null,
+      category: categorySlug ?? null,
+      status: 'failed',
+      error: null,
+    })
+    .select('id')
+    .single();
+
+  if (insertError) {
+    logger.error('composed_drafts insert failed', { error: insertError.message });
+    throw new Error(`Draft could not be recorded: ${insertError.message}`);
+  }
+
+  const id = inserted.id;
+
+  // 6. Post as a DRAFT on ichikarablog.
   let wpPostId: number | null = null;
   let status: 'draft' | 'failed' = 'draft';
   let errorMessage: string | null = null;
@@ -112,7 +142,20 @@ export async function composeDraftForTopic(input: ComposeInput): Promise<Compose
     logger.error('ichikarablog draft post failed', { err: errorMessage });
   }
 
-  // 6. Featured image (best effort — a missing image never fails the draft).
+  const { error: updateError } = await db
+    .from('composed_drafts')
+    .update({
+      wp_post_id: wpPostId,
+      status,
+      error: errorMessage,
+    })
+    .eq('id', id);
+
+  if (updateError) {
+    logger.error('composed_drafts update failed', { id, error: updateError.message });
+  }
+
+  // 7. Featured image (best effort — a missing image never fails the draft).
   if (wpPostId !== null) {
     try {
       await generateAndAttachFeaturedImage(
@@ -131,33 +174,9 @@ export async function composeDraftForTopic(input: ComposeInput): Promise<Compose
     }
   }
 
-  // 7. Record.
-  const { data, error } = await db
-    .from('composed_drafts')
-    .insert({
-      topic,
-      angle: angle ?? null,
-      title,
-      outline: draft.outline,
-      body: draft.body,
-      source_urls: sources,
-      wp_target: WP_TARGET,
-      wp_post_id: wpPostId,
-      category: categorySlug ?? null,
-      status,
-      error: errorMessage,
-    })
-    .select('id')
-    .single();
+  logger.info('Compose complete', { id, wpPostId, status, sources: sources.length });
 
-  if (error) {
-    logger.error('composed_drafts insert failed', { error: error.message });
-    throw new Error(`Draft was generated but could not be recorded: ${error.message}`);
-  }
-
-  logger.info('Compose complete', { id: data.id, wpPostId, status, sources: sources.length });
-
-  return { id: data.id, wpPostId, title, status, sources };
+  return { id, wpPostId, title, status, sources };
 }
 
 // Flip a composed draft to published on ichikarablog. Idempotent.
@@ -174,12 +193,27 @@ export async function publishComposedDraft(id: string): Promise<{ link: string }
   if (row.wp_post_id === null) throw new Error('This draft was never posted to WordPress');
 
   const target = resolveWordPressTarget(WP_TARGET);
-  const { link } = await publishWordPressPost(row.wp_post_id, target);
+
+  let link: string;
+  try {
+    ({ link } = await publishWordPressPost(row.wp_post_id, target));
+  } catch (err) {
+    const message = String(err);
+    logger.error('Publish to WordPress failed', { id, wpPostId: row.wp_post_id, err: message });
+    const { error: updateError } = await db
+      .from('composed_drafts')
+      .update({ error: message })
+      .eq('id', id);
+    if (updateError) {
+      logger.error('composed_drafts failure update failed', { id, error: updateError.message });
+    }
+    throw err;
+  }
 
   if (row.status !== 'published') {
     await db
       .from('composed_drafts')
-      .update({ status: 'published', published_at: new Date().toISOString() })
+      .update({ status: 'published', published_at: new Date().toISOString(), error: null })
       .eq('id', id);
   }
 
