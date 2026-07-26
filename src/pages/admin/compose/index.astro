@@ -1,0 +1,194 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import { getAdminClient } from '@/lib/supabase/server';
+
+type ComposedRow = {
+  id: string;
+  topic: string;
+  title: string;
+  source_urls: { title: string; url: string }[] | null;
+  wp_post_id: number | null;
+  status: string;
+  error: string | null;
+  created_at: string;
+  published_at: string | null;
+};
+
+const db = getAdminClient();
+const { data } = await db
+  .from('composed_drafts')
+  .select('id, topic, title, source_urls, wp_post_id, status, error, created_at, published_at')
+  .order('created_at', { ascending: false })
+  .limit(50);
+
+const rows = (data ?? []) as ComposedRow[];
+
+const composed = Astro.url.searchParams.get('composed') === '1';
+const published = Astro.url.searchParams.get('published') === '1';
+const error = Astro.url.searchParams.get('error');
+
+const ichikaraBase = (import.meta.env.ICHIKARA_WP_BASE_URL ?? '').replace(/\/$/, '');
+
+const STATUS_LABEL: Record<string, string> = {
+  draft: '下書き',
+  published: '公開済み',
+  failed: '失敗',
+};
+---
+
+<AdminLayout title="記事を書く" activeNav="compose">
+  {composed && (
+    <div class="mb-4 px-4 py-2 rounded-md bg-score-highBg text-score-high text-sm">
+      下書きを生成し、ichikarablogに保存しました。内容を確認して「公開」を押してください。
+    </div>
+  )}
+
+  {published && (
+    <div class="mb-4 px-4 py-2 rounded-md bg-score-highBg text-score-high text-sm">
+      記事を公開しました。
+    </div>
+  )}
+
+  {error && (
+    <div class="mb-4 px-4 py-2 rounded-md bg-score-lowBg text-score-low text-sm">
+      {error}
+    </div>
+  )}
+
+  <!-- Compose form -->
+  <section class="mb-8 bg-surface border border-border rounded-lg p-5">
+    <h2 class="text-sm font-semibold text-text-primary mb-1">トピックから下書きを作る</h2>
+    <p class="text-xs text-text-muted mb-4">
+      Web検索で下調べし、あなたの過去記事の文体でichikarablogに下書きを保存します。公開はされません。
+    </p>
+
+    <form method="POST" action="/api/admin/compose-draft" class="space-y-3" id="compose-form">
+      <div>
+        <label for="topic" class="block text-xs font-medium text-text-secondary mb-1">トピック（必須）</label>
+        <textarea
+          id="topic"
+          name="topic"
+          rows="3"
+          required
+          placeholder="例: ADHDの当事者が使えるタスク管理の考え方を、最近の研究もふまえて書きたい"
+          class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background text-text-primary focus:outline-none focus:border-accent"
+        ></textarea>
+      </div>
+
+      <div>
+        <label for="angle" class="block text-xs font-medium text-text-secondary mb-1">切り口・補足（任意）</label>
+        <input
+          id="angle"
+          name="angle"
+          type="text"
+          placeholder="例: 精神論ではなく仕組みの話にしたい"
+          class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background text-text-primary focus:outline-none focus:border-accent"
+        />
+      </div>
+
+      <div>
+        <label for="category" class="block text-xs font-medium text-text-secondary mb-1">カテゴリスラッグ（任意）</label>
+        <input
+          id="category"
+          name="category"
+          type="text"
+          placeholder="例: adhd"
+          class="w-full max-w-xs px-3 py-2 text-sm border border-border rounded-md bg-background text-text-primary focus:outline-none focus:border-accent"
+        />
+      </div>
+
+      <button
+        type="submit"
+        id="compose-submit"
+        class="px-4 py-2 text-sm rounded-md bg-accent text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+      >
+        下書きを生成
+      </button>
+      <p id="compose-progress" class="text-xs text-text-muted hidden">
+        下調べ → 執筆 → ichikarablogへ保存。1〜3分ほどかかります。このページを閉じないでください。
+      </p>
+    </form>
+  </section>
+
+  <!-- Composed drafts -->
+  <section>
+    <h2 class="text-sm font-semibold text-text-primary mb-3">生成した下書き</h2>
+
+    {rows.length === 0 ? (
+      <p class="text-sm text-text-muted py-8 text-center">
+        まだ下書きはありません。上のフォームからトピックを入力してください。
+      </p>
+    ) : (
+      <div class="divide-y divide-border border border-border rounded-lg bg-surface">
+        {rows.map(row => (
+          <div class="p-4">
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class:list={[
+                    'text-xs px-2 py-0.5 rounded',
+                    row.status === 'published' ? 'bg-score-highBg text-score-high'
+                      : row.status === 'failed' ? 'bg-score-lowBg text-score-low'
+                      : 'bg-accent-light text-accent',
+                  ]}>
+                    {STATUS_LABEL[row.status] ?? row.status}
+                  </span>
+                  <span class="text-xs text-text-muted">
+                    {new Date(row.created_at).toLocaleString('ja-JP')}
+                  </span>
+                  <span class="text-xs text-text-muted">
+                    参照 {row.source_urls?.length ?? 0} 件
+                  </span>
+                </div>
+                <p class="text-sm font-semibold text-text-primary leading-snug">{row.title}</p>
+                <p class="text-xs text-text-muted mt-1 line-clamp-2">{row.topic}</p>
+                {row.error && (
+                  <p class="text-xs text-score-low mt-1">{row.error}</p>
+                )}
+              </div>
+
+              <div class="flex items-center gap-2 flex-shrink-0">
+                {row.wp_post_id !== null && ichikaraBase && (
+                  <a
+                    href={`${ichikaraBase}/wp-admin/post.php?post=${row.wp_post_id}&action=edit`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-xs text-accent border border-border rounded px-3 py-1.5 hover:bg-[#F0F0EE] transition-colors"
+                  >
+                    ichikaraで開く
+                  </a>
+                )}
+                {row.wp_post_id !== null && row.status !== 'published' && (
+                  <form method="POST" action="/api/admin/compose-publish">
+                    <input type="hidden" name="id" value={row.id} />
+                    <button
+                      type="submit"
+                      class="text-xs text-white bg-accent rounded px-3 py-1.5 hover:opacity-90 transition-opacity"
+                    >
+                      公開
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </section>
+</AdminLayout>
+
+<script>
+  // Generation takes minutes — show progress and prevent a double submit.
+  const form = document.getElementById('compose-form');
+  const button = document.getElementById('compose-submit') as HTMLButtonElement | null;
+  const progress = document.getElementById('compose-progress');
+
+  form?.addEventListener('submit', () => {
+    if (button) {
+      button.disabled = true;
+      button.textContent = '生成中…';
+    }
+    progress?.classList.remove('hidden');
+  });
+</script>
