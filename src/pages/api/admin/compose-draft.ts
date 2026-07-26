@@ -19,7 +19,7 @@ export const POST: APIRoute = async (context) => {
 
   const categoryIds = form.getAll('categoryIds')
     .map((v) => Number(v))
-    .filter((n) => Number.isFinite(n));
+    .filter((n) => Number.isInteger(n) && n > 0);
 
   // The full id→name map for every category rendered in the picker travels
   // through as a hidden field, so we can label the selected ones without an

@@ -66,28 +66,52 @@ if (!ichikaraBase) {
   categoriesLoadFailed = true;
   tagsLoadFailed = true;
 } else {
-  try {
-    const res = await fetch(
-      `${ichikaraBase}/wp-json/wp/v2/categories?per_page=100&orderby=count&order=desc&_fields=id,name,count`,
-    );
-    if (!res.ok) throw new Error(`status ${res.status}`);
-    const data = await res.json();
-    categories = Array.isArray(data) ? data : [];
-  } catch (err) {
-    logger.error('Failed to load ichikarablog categories', { err: String(err) });
+  // Run concurrently with a 5s timeout each — a slow/hanging ichikarablog
+  // must not block the whole page render (composed-drafts list, 公開
+  // buttons). A timeout is treated exactly like any other fetch failure:
+  // logged, empty list, neutral notice. One failing fetch must not discard
+  // the other's successful result, so each is caught independently.
+  const [categoriesResult, tagsResult] = await Promise.all([
+    (async () => {
+      try {
+        const res = await fetch(
+          `${ichikaraBase}/wp-json/wp/v2/categories?per_page=100&orderby=count&order=desc&_fields=id,name,count`,
+          { signal: AbortSignal.timeout(5000) },
+        );
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+      } catch (err) {
+        logger.error('Failed to load ichikarablog categories', { err: String(err) });
+        return null;
+      }
+    })(),
+    (async () => {
+      try {
+        const res = await fetch(
+          `${ichikaraBase}/wp-json/wp/v2/tags?per_page=100&orderby=count&order=desc&_fields=id,name,count`,
+          { signal: AbortSignal.timeout(5000) },
+        );
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+      } catch (err) {
+        logger.error('Failed to load ichikarablog tags', { err: String(err) });
+        return null;
+      }
+    })(),
+  ]);
+
+  if (categoriesResult === null) {
     categoriesLoadFailed = true;
+  } else {
+    categories = categoriesResult;
   }
 
-  try {
-    const res = await fetch(
-      `${ichikaraBase}/wp-json/wp/v2/tags?per_page=100&orderby=count&order=desc&_fields=id,name,count`,
-    );
-    if (!res.ok) throw new Error(`status ${res.status}`);
-    const data = await res.json();
-    tags = Array.isArray(data) ? data : [];
-  } catch (err) {
-    logger.error('Failed to load ichikarablog tags', { err: String(err) });
+  if (tagsResult === null) {
     tagsLoadFailed = true;
+  } else {
+    tags = tagsResult;
   }
 }
 
@@ -164,8 +188,8 @@ const STATUS_LABEL: Record<string, string> = {
         />
       </div>
 
-      <div>
-        <label class="block text-xs font-medium text-text-secondary mb-1">カテゴリ（任意）</label>
+      <fieldset class="border-0 p-0 m-0">
+        <legend class="block text-xs font-medium text-text-secondary mb-1">カテゴリ（任意）</legend>
         {categoriesLoadFailed && (
           <p class="text-xs text-text-muted mb-2">
             カテゴリ一覧を読み込めませんでした。空欄のまま送信できます。
@@ -209,7 +233,7 @@ const STATUS_LABEL: Record<string, string> = {
             />
           </div>
         </div>
-      </div>
+      </fieldset>
 
       <div>
         <label for="tags" class="block text-xs font-medium text-text-secondary mb-1">タグ（任意・カンマ区切り）</label>
