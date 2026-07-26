@@ -21,7 +21,7 @@ export interface RawBlogPost {
   excerpt?: string;
 }
 
-export async function ingestBlogPost(post: RawBlogPost): Promise<number> {
+export async function ingestBlogPost(post: RawBlogPost, corpus = 'aiojisan'): Promise<number> {
   const db = getAdminClient();
   const ai = getAiProvider();
 
@@ -45,7 +45,8 @@ export async function ingestBlogPost(post: RawBlogPost): Promise<number> {
       .from('blog_style_chunks')
       .select('id', { count: 'exact', head: true })
       .eq('source_post_id', post.id)
-      .eq('chunk_index', chunk.index);
+      .eq('chunk_index', chunk.index)
+      .eq('corpus', corpus);
 
     if ((count ?? 0) > 0) continue;
 
@@ -70,6 +71,7 @@ export async function ingestBlogPost(post: RawBlogPost): Promise<number> {
       tone_tag: metadata.toneTag || null,
       structure_type: metadata.structureType || null,
       style_tags: metadata.styleTags,
+      corpus,
       embedding,
     });
 
@@ -88,11 +90,11 @@ export async function ingestBlogPost(post: RawBlogPost): Promise<number> {
   return inserted;
 }
 
-export async function ingestBlogPosts(posts: RawBlogPost[]): Promise<void> {
+export async function ingestBlogPosts(posts: RawBlogPost[], corpus = 'aiojisan'): Promise<number> {
   let totalInserted = 0;
 
   for (const post of posts) {
-    const count = await ingestBlogPost(post);
+    const count = await ingestBlogPost(post, corpus);
     totalInserted += count;
     // Brief pause to respect rate limits
     await new Promise(r => setTimeout(r, 500));
@@ -101,5 +103,8 @@ export async function ingestBlogPosts(posts: RawBlogPost[]): Promise<void> {
   logger.info('Batch ingestion complete', {
     posts: posts.length,
     totalChunks: totalInserted,
+    corpus,
   });
+
+  return totalInserted;
 }
