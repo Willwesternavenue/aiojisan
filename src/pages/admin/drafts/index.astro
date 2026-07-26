@@ -20,9 +20,16 @@ const imgDone = Astro.url.searchParams.get('img_done');
 const imgFail = Astro.url.searchParams.get('img_fail');
 const imgLeft = Astro.url.searchParams.get('img_left');
 const showImgResult = imgDone !== null;
+const missing = Astro.url.searchParams.get('missing') === '1';
 ---
 
 <AdminLayout title="下書き履歴" activeNav="drafts">
+  {missing && (
+    <div class="mb-4 px-4 py-2 rounded-md bg-score-lowBg text-score-low text-sm">
+      その下書きは見つかりませんでした。削除された可能性があります。
+    </div>
+  )}
+
   {regenerated && (
     <div class="mb-4 px-4 py-2 rounded-md bg-score-highBg text-score-high text-sm">
       記事を再生成し、WordPress本文を更新しました。

@@ -24,11 +24,12 @@ export async function retrieveStyleChunks(
   options: {
     matchThreshold?: number;
     matchCount?: number;
+    corpus?: string;
   } = {},
 ): Promise<RetrievedChunk[]> {
-  const { matchThreshold = 0.65, matchCount = 8 } = options;
+  const { matchThreshold = 0.65, matchCount = 8, corpus } = options;
 
-  logger.info('Retrieving style chunks', { queryLength: queryText.length });
+  logger.info('Retrieving style chunks', { queryLength: queryText.length, corpus: corpus ?? '(all)' });
 
   const ai = getAiProvider();
   const embedding = await ai.generateEmbedding(queryText);
@@ -38,6 +39,7 @@ export async function retrieveStyleChunks(
     query_embedding: embedding,
     match_threshold: matchThreshold,
     match_count: matchCount,
+    p_corpus: corpus ?? null,
   });
 
   if (error) {
@@ -71,16 +73,21 @@ export async function retrieveStyleChunks(
 export async function getStyleChunksForDraft(
   articleTitle: string,
   topics: string[],
+  // Default to the AIおじさん corpus so existing 2-argument callers (the news
+  // pipeline) never pull personal-blog style samples. Pass 'ichikarablog'
+  // explicitly (as the compose path does) to opt into that corpus instead.
+  corpus: string = 'aiojisan',
 ): Promise<string[]> {
   const query = `${articleTitle} ${topics.join(' ')}`;
 
   const chunks = await retrieveStyleChunks(query, {
     matchThreshold: 0.60,
     matchCount: 5,
+    corpus,
   });
 
   if (chunks.length === 0) {
-    logger.info('No style chunks found for draft');
+    logger.info('No style chunks found for draft', { corpus });
     return [];
   }
 

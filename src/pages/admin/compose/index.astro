@@ -1,0 +1,404 @@
+---
+import AdminLayout from '@/layouts/AdminLayout.astro';
+import { getAdminClient } from '@/lib/supabase/server';
+import { createLogger } from '@/lib/logger';
+
+const logger = createLogger('admin:compose');
+
+type ComposedRow = {
+  id: string;
+  topic: string;
+  title: string;
+  source_urls: { title: string; url: string }[] | null;
+  wp_post_id: number | null;
+  status: string;
+  error: string | null;
+  created_at: string;
+  published_at: string | null;
+};
+
+const db = getAdminClient();
+let rows: ComposedRow[] = [];
+let loadFailed = false;
+try {
+  const { data, error: queryError } = await db
+    .from('composed_drafts')
+    .select('id, topic, title, source_urls, wp_post_id, status, error, created_at, published_at')
+    .order('created_at', { ascending: false })
+    .limit(50);
+
+  if (queryError) {
+    logger.error('Failed to load composed_drafts', { err: queryError.message });
+    loadFailed = true;
+  } else {
+    rows = (data ?? []) as ComposedRow[];
+  }
+} catch (err) {
+  logger.error('Unexpected error loading composed_drafts', { err: String(err) });
+  loadFailed = true;
+}
+
+const composed = Astro.url.searchParams.get('composed') === '1';
+const published = Astro.url.searchParams.get('published') === '1';
+const publishedLink = Astro.url.searchParams.get('link');
+const error = Astro.url.searchParams.get('error');
+
+const ichikaraBase = (import.meta.env.ICHIKARA_WP_BASE_URL ?? '').replace(/\/$/, '');
+
+// Only trust `link` as a real published post URL — otherwise it could be a
+// crafted scheme (e.g. `javascript:`) rendered as a clickable admin link.
+const isSafePublishedLink = !!publishedLink && (
+  ichikaraBase ? publishedLink.startsWith(ichikaraBase) : publishedLink.startsWith('https://')
+);
+
+// ── Category / tag pickers (WordPress-style) ────────────────────────────────
+// Public read endpoints, no auth needed. A failure here must never 500 the
+// page — fall back to an empty list plus a neutral notice.
+type WpCategory = { id: number; name: string; count: number };
+type WpTag = { id: number; name: string; count: number };
+
+let categories: WpCategory[] = [];
+let tags: WpTag[] = [];
+let categoriesLoadFailed = false;
+let tagsLoadFailed = false;
+
+if (!ichikaraBase) {
+  categoriesLoadFailed = true;
+  tagsLoadFailed = true;
+} else {
+  // Run concurrently with a 5s timeout each — a slow/hanging ichikarablog
+  // must not block the whole page render (composed-drafts list, 公開
+  // buttons). A timeout is treated exactly like any other fetch failure:
+  // logged, empty list, neutral notice. One failing fetch must not discard
+  // the other's successful result, so each is caught independently.
+  const [categoriesResult, tagsResult] = await Promise.all([
+    (async () => {
+      try {
+        const res = await fetch(
+          `${ichikaraBase}/wp-json/wp/v2/categories?per_page=100&orderby=count&order=desc&_fields=id,name,count`,
+          { signal: AbortSignal.timeout(5000) },
+        );
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+      } catch (err) {
+        logger.error('Failed to load ichikarablog categories', { err: String(err) });
+        return null;
+      }
+    })(),
+    (async () => {
+      try {
+        const res = await fetch(
+          `${ichikaraBase}/wp-json/wp/v2/tags?per_page=100&orderby=count&order=desc&_fields=id,name,count`,
+          { signal: AbortSignal.timeout(5000) },
+        );
+        if (!res.ok) throw new Error(`status ${res.status}`);
+        const data = await res.json();
+        return Array.isArray(data) ? data : [];
+      } catch (err) {
+        logger.error('Failed to load ichikarablog tags', { err: String(err) });
+        return null;
+      }
+    })(),
+  ]);
+
+  if (categoriesResult === null) {
+    categoriesLoadFailed = true;
+  } else {
+    categories = categoriesResult;
+  }
+
+  if (tagsResult === null) {
+    tagsLoadFailed = true;
+  } else {
+    tags = tagsResult;
+  }
+}
+
+const categoryNamesJson = JSON.stringify(categories.map((c) => ({ id: c.id, name: c.name })));
+
+const STATUS_LABEL: Record<string, string> = {
+  draft: '下書き',
+  published: '公開済み',
+  failed: '失敗',
+};
+---
+
+<AdminLayout title="記事を書く（意力ブログ）" activeNav="compose">
+  {composed && (
+    <div class="mb-4 px-4 py-2 rounded-md bg-score-highBg text-score-high text-sm">
+      下書きを生成し、ichikarablogに保存しました。内容を確認して「公開」を押してください。
+    </div>
+  )}
+
+  {published && (
+    <div class="mb-4 px-4 py-2 rounded-md bg-score-highBg text-score-high text-sm">
+      記事を公開しました。
+      {isSafePublishedLink && (
+        <>
+          {' '}
+          <a href={publishedLink} target="_blank" rel="noopener noreferrer" class="underline">
+            {publishedLink}
+          </a>
+        </>
+      )}
+    </div>
+  )}
+
+  {error && (
+    <div class="mb-4 px-4 py-2 rounded-md bg-score-lowBg text-score-low text-sm">
+      {error}
+    </div>
+  )}
+
+  {loadFailed && (
+    <div class="mb-4 px-4 py-2 rounded-md bg-[#F0F0EE] text-text-secondary text-sm">
+      下書き一覧を読み込めませんでした。しばらくしてから再度お試しください。
+    </div>
+  )}
+
+  <!-- Compose form -->
+  <section class="mb-8 bg-surface border border-border rounded-lg p-5">
+    <h2 class="text-sm font-semibold text-text-primary mb-1">トピックから下書きを作る</h2>
+    <p class="text-xs text-text-muted mb-4">
+      Web検索で下調べし、あなたの過去記事の文体でichikarablogに下書きを保存します。公開はされません。
+    </p>
+
+    <form method="POST" action="/api/admin/compose-draft" class="space-y-3" id="compose-form">
+      <div>
+        <label for="topic" class="block text-xs font-medium text-text-secondary mb-1">トピック（必須）</label>
+        <textarea
+          id="topic"
+          name="topic"
+          rows="3"
+          required
+          placeholder="例: ADHDの当事者が使えるタスク管理の考え方を、最近の研究もふまえて書きたい"
+          class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background text-text-primary focus:outline-none focus:border-accent"
+        ></textarea>
+      </div>
+
+      <div>
+        <label for="angle" class="block text-xs font-medium text-text-secondary mb-1">切り口・補足（任意）</label>
+        <input
+          id="angle"
+          name="angle"
+          type="text"
+          placeholder="例: 精神論ではなく仕組みの話にしたい"
+          class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background text-text-primary focus:outline-none focus:border-accent"
+        />
+      </div>
+
+      <fieldset class="border-0 p-0 m-0">
+        <legend class="block text-xs font-medium text-text-secondary mb-1">カテゴリ（任意）</legend>
+        {categoriesLoadFailed && (
+          <p class="text-xs text-text-muted mb-2">
+            カテゴリ一覧を読み込めませんでした。空欄のまま送信できます。
+          </p>
+        )}
+        <div class="max-h-48 overflow-y-auto border border-border rounded-md bg-background p-2 space-y-0.5">
+          {categories.length === 0 ? (
+            <p class="text-xs text-text-muted px-1 py-1">カテゴリがありません</p>
+          ) : (
+            categories.map((cat) => (
+              <label class="flex items-center gap-2 px-1 py-1 text-sm text-text-primary rounded hover:bg-[#F0F0EE] cursor-pointer">
+                <input
+                  type="checkbox"
+                  name="categoryIds"
+                  value={cat.id}
+                  class="accent-accent"
+                />
+                <span>{cat.name}</span>
+              </label>
+            ))
+          )}
+        </div>
+        <input type="hidden" name="categoryNamesJson" value={categoryNamesJson} />
+
+        <div class="mt-2">
+          <button
+            type="button"
+            id="new-category-toggle"
+            class="text-xs text-accent hover:underline"
+          >
+            ＋新規カテゴリーを追加
+          </button>
+          <div id="new-category-wrap" class="hidden mt-2">
+            <label for="newCategoryName" class="sr-only">新しいカテゴリー名</label>
+            <input
+              id="newCategoryName"
+              name="newCategoryName"
+              type="text"
+              placeholder="新しいカテゴリー名"
+              class="w-full max-w-xs px-3 py-2 text-sm border border-border rounded-md bg-background text-text-primary focus:outline-none focus:border-accent"
+            />
+          </div>
+        </div>
+      </fieldset>
+
+      <div>
+        <label for="tags" class="block text-xs font-medium text-text-secondary mb-1">タグ（任意・カンマ区切り）</label>
+        <input
+          id="tags"
+          name="tags"
+          type="text"
+          placeholder="例: マーケティング, コミュニケーション"
+          class="w-full px-3 py-2 text-sm border border-border rounded-md bg-background text-text-primary focus:outline-none focus:border-accent"
+        />
+        {tagsLoadFailed && (
+          <p class="text-xs text-text-muted mt-1">
+            タグ一覧を読み込めませんでした。空欄のまま送信できます。
+          </p>
+        )}
+        {tags.length > 0 && (
+          <div class="mt-2">
+            <p class="text-xs text-text-muted mb-1">よく使われるタグから選択</p>
+            <div class="flex flex-wrap gap-1.5">
+              {tags.map((tag) => (
+                <button
+                  type="button"
+                  class="tag-outline tag-chip hover:border-accent hover:text-accent transition-colors"
+                  data-tag-name={tag.name}
+                >
+                  {tag.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      <button
+        type="submit"
+        id="compose-submit"
+        class="px-4 py-2 text-sm rounded-md bg-accent text-white hover:opacity-90 transition-opacity disabled:opacity-50"
+      >
+        下書きを生成
+      </button>
+      <p id="compose-progress" class="text-xs text-text-muted hidden">
+        下調べ → 執筆 → ichikarablogへ保存。1〜3分ほどかかります。このページを閉じないでください。
+      </p>
+    </form>
+  </section>
+
+  <!-- Composed drafts -->
+  <section>
+    <h2 class="text-sm font-semibold text-text-primary mb-3">生成した下書き</h2>
+
+    {rows.length === 0 ? (
+      <p class="text-sm text-text-muted py-8 text-center">
+        まだ下書きはありません。上のフォームからトピックを入力してください。
+      </p>
+    ) : (
+      <div class="divide-y divide-border border border-border rounded-lg bg-surface">
+        {rows.map(row => (
+          <div class="p-4">
+            <div class="flex items-start justify-between gap-4">
+              <div class="min-w-0">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class:list={[
+                    'text-xs px-2 py-0.5 rounded',
+                    row.status === 'published' ? 'bg-score-highBg text-score-high'
+                      : row.status === 'failed' ? 'bg-score-lowBg text-score-low'
+                      : 'bg-accent-light text-accent',
+                  ]}>
+                    {STATUS_LABEL[row.status] ?? row.status}
+                  </span>
+                  <span class="text-xs text-text-muted">
+                    {new Date(row.created_at).toLocaleString('ja-JP')}
+                  </span>
+                  <span class="text-xs text-text-muted">
+                    参照 {row.source_urls?.length ?? 0} 件
+                  </span>
+                </div>
+                <p class="text-sm font-semibold text-text-primary leading-snug">{row.title}</p>
+                <p class="text-xs text-text-muted mt-1 line-clamp-2">{row.topic}</p>
+                {row.error && (
+                  <p class="text-xs text-score-low mt-1">{row.error}</p>
+                )}
+              </div>
+
+              <div class="flex items-center gap-2 flex-shrink-0">
+                {row.wp_post_id !== null && ichikaraBase && (
+                  <a
+                    href={`${ichikaraBase}/wp-admin/post.php?post=${row.wp_post_id}&action=edit`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-xs text-accent border border-border rounded px-3 py-1.5 hover:bg-[#F0F0EE] transition-colors"
+                  >
+                    ichikaraで開く
+                  </a>
+                )}
+                {row.wp_post_id !== null && row.status !== 'published' && (
+                  <form method="POST" action="/api/admin/compose-publish">
+                    <input type="hidden" name="id" value={row.id} />
+                    <button
+                      type="submit"
+                      class="text-xs text-white bg-accent rounded px-3 py-1.5 hover:opacity-90 transition-opacity"
+                    >
+                      公開
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    )}
+  </section>
+</AdminLayout>
+
+<script>
+  // Generation takes minutes — show progress and prevent a double submit.
+  const form = document.getElementById('compose-form');
+  const button = document.getElementById('compose-submit') as HTMLButtonElement | null;
+  const progress = document.getElementById('compose-progress');
+  const initialButtonLabel = button?.textContent ?? '';
+
+  form?.addEventListener('submit', () => {
+    if (button) {
+      button.disabled = true;
+      button.textContent = '生成中…';
+    }
+    progress?.classList.remove('hidden');
+  });
+
+  // If the page is restored from bfcache (e.g. via the back button) while a
+  // previous submit had disabled the button, reset it — nothing is actually
+  // in flight for this restored page.
+  window.addEventListener('pageshow', (event) => {
+    if (!event.persisted) return;
+    if (button) {
+      button.disabled = false;
+      button.textContent = initialButtonLabel;
+    }
+    progress?.classList.add('hidden');
+  });
+
+  // WordPress-style "+ new category" toggle.
+  const newCategoryToggle = document.getElementById('new-category-toggle');
+  const newCategoryWrap = document.getElementById('new-category-wrap');
+  newCategoryToggle?.addEventListener('click', () => {
+    const willShow = newCategoryWrap?.classList.contains('hidden');
+    newCategoryWrap?.classList.toggle('hidden');
+    if (willShow) {
+      (document.getElementById('newCategoryName') as HTMLInputElement | null)?.focus();
+    }
+  });
+
+  // Clicking a "popular tag" chip appends its name to the tags input.
+  const tagsInput = document.getElementById('tags') as HTMLInputElement | null;
+  document.querySelectorAll('.tag-chip').forEach((chip) => {
+    chip.addEventListener('click', () => {
+      if (!tagsInput) return;
+      const name = chip.getAttribute('data-tag-name') ?? '';
+      if (!name) return;
+      const current = tagsInput.value.split(',').map((s) => s.trim()).filter(Boolean);
+      if (!current.includes(name)) {
+        current.push(name);
+        tagsInput.value = current.join(', ');
+      }
+      tagsInput.focus();
+    });
+  });
+</script>

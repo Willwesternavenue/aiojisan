@@ -45,6 +45,19 @@ export interface BlogDraftOutput {
   model: string;  // Actual model used to generate the draft
 }
 
+export interface ResearchSource {
+  title: string;
+  url: string;
+}
+
+export interface TopicDraftInput {
+  topic: string;
+  angle?: string;
+  findings: string;          // What the web research turned up
+  sources: ResearchSource[]; // Cited URLs to list at the end of the post
+  styleChunks: string[];     // Retrieved RAG chunks (ichikarablog voice)
+}
+
 export interface XPostDraftOutput {
   direct: string;       // 直球・要点型
   analytical: string;   // 知的・分析型

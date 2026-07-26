@@ -16,6 +16,10 @@ const envSchema = z.object({
   // Optional
   ANTHROPIC_API_KEY: z.string().optional(),
   GOOGLE_AI_API_KEY: z.string().optional(),
+  // Personal blog (ichikarablog.com) — topic-directed drafts
+  ICHIKARA_WP_BASE_URL: z.string().url().optional(),
+  ICHIKARA_WP_USERNAME: z.string().min(1).optional(),
+  ICHIKARA_WP_APP_PASSWORD: z.string().min(1).optional(),
 });
 
 type Env = z.infer<typeof envSchema>;

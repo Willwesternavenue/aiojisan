@@ -1,9 +1,14 @@
 // API: Record a manual editorial action (favorite, exclude, hold, etc.)
 
 import type { APIRoute } from 'astro';
+import { requireAdminSession } from '@/lib/auth';
 import { getAdminClient } from '@/lib/supabase/server';
 
-export const POST: APIRoute = async ({ request, redirect }) => {
+export const POST: APIRoute = async (context) => {
+  const authError = await requireAdminSession(context);
+  if (authError) return authError;
+
+  const { request, redirect } = context;
   const formData = await request.formData();
   const articleId = formData.get('article_id') as string;
   const actionType = formData.get('action_type') as string;

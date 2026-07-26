@@ -39,8 +39,12 @@ export function requireCronAuth(request: Request): Response | null {
 export async function requireAdminSession(context: APIContext): Promise<Response | null> {
   const { cookies, redirect } = context;
 
-  // Dev bypass: if SUPABASE_URL is not set, allow access in development only
-  if (import.meta.env.DEV && !import.meta.env.SUPABASE_URL) {
+  // Dev bypass: skip auth when running in development mode, matching the same
+  // bypass in src/middleware.ts. Without this the admin pages render locally
+  // (middleware lets them through) but every form POST bounces to /admin/login,
+  // making the dashboard untestable. import.meta.env.DEV is false in any built
+  // output, so production auth is unaffected.
+  if (import.meta.env.DEV) {
     return null;
   }
 

@@ -1,12 +1,17 @@
 // API: Backfill featured images for published posts missing a real image
 
 import type { APIRoute } from 'astro';
+import { requireAdminSession } from '@/lib/auth';
 import { backfillMissingFeaturedImages } from '@/services/images/backfill';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('api:backfill-images');
 
-export const POST: APIRoute = async ({ redirect }) => {
+export const POST: APIRoute = async (context) => {
+  const authError = await requireAdminSession(context);
+  if (authError) return authError;
+
+  const { redirect } = context;
   logger.info('Backfilling featured images');
 
   try {

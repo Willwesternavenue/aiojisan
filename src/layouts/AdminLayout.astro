@@ -3,7 +3,7 @@ import '@/styles/global.css';
 
 interface Props {
   title: string;
-  activeNav?: 'dashboard' | 'sources' | 'feed' | 'drafts' | 'settings';
+  activeNav?: 'dashboard' | 'sources' | 'feed' | 'drafts' | 'compose' | 'settings';
 }
 
 const { title, activeNav } = Astro.props;
@@ -13,6 +13,7 @@ const navItems = [
   { key: 'sources',   href: '/admin/sources',  label: 'ソース管理',     icon: '◎' },
   { key: 'feed',      href: '/admin/feed',     label: 'ニュースフィード', icon: '◷' },
   { key: 'drafts',    href: '/admin/drafts',   label: '下書き履歴',     icon: '◻' },
+  { key: 'compose',   href: '/admin/compose',  label: '記事を書く（意力ブログ）', icon: '✎' },
   { key: 'settings',  href: '/admin/settings', label: '設定',           icon: '⚙' },
 ] as const;
 ---
