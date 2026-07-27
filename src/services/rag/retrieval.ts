@@ -81,7 +81,13 @@ export async function getStyleChunksForDraft(
   const query = `${articleTitle} ${topics.join(' ')}`;
 
   const chunks = await retrieveStyleChunks(query, {
-    matchThreshold: 0.60,
+    // 0.60 was set before either corpus had data and turned out to sit above
+    // what this embedding model actually produces for Japanese prose: measured
+    // over both corpora, top-5 similarity for a clearly on-topic query lands
+    // between 0.44 and 0.67, so 0.60 returned nothing on most queries and the
+    // style RAG silently never fired. 0.45 reliably returns on-topic samples
+    // while still excluding unrelated ones.
+    matchThreshold: 0.45,
     matchCount: 5,
     corpus,
   });
