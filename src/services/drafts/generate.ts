@@ -10,6 +10,7 @@ import {
 } from '@/services/wordpress/client';
 import { postToX } from '@/services/social/x';
 import { detectPillarCategories, type PillarCategory } from '@/services/editorial/pillars';
+import { recordUnrecordedPostAlert } from '@/services/images/alerts';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('draft-generator');
@@ -56,16 +57,49 @@ export async function generateDraftForArticle(
   const db = getAdminClient();
   const ai = getAiProvider();
 
-  // Check if draft already exists
-  const { data: existing } = await db
+  // Check if a draft already exists. This guard must FAIL CLOSED: when the
+  // database is unreachable (in Aug 2026 the free tier hit its quota) a
+  // discarded error made "read failed" look identical to "no draft exists",
+  // so the hourly cron re-published the same article to WordPress four times.
+  // Bail out rather than risk a duplicate live post.
+  const { data: existing, error: existingError } = await db
     .from('article_actions')
     .select('id')
     .eq('article_id', articleId)
     .eq('action_type', 'generate_blog_draft')
     .maybeSingle();
 
+  if (existingError) {
+    logger.error('Duplicate-guard lookup failed, skipping to avoid a duplicate post', {
+      articleId,
+      error: existingError.message,
+    });
+    return null;
+  }
+
   if (existing) {
     logger.info('Draft already exists, skipping', { articleId });
+    return null;
+  }
+
+  // Second guard on the draft table itself: article_actions can be missing if a
+  // previous run created the WordPress post but died before recording it.
+  const { data: existingDraft, error: existingDraftError } = await db
+    .from('generated_drafts')
+    .select('id')
+    .eq('article_id', articleId)
+    .limit(1);
+
+  if (existingDraftError) {
+    logger.error('Draft-table guard lookup failed, skipping to avoid a duplicate post', {
+      articleId,
+      error: existingDraftError.message,
+    });
+    return null;
+  }
+
+  if (existingDraft && existingDraft.length > 0) {
+    logger.info('Draft row already exists, skipping', { articleId });
     return null;
   }
 
@@ -173,7 +207,11 @@ export async function generateDraftForArticle(
     }
   }
 
-  await db.from('generated_drafts').insert({
+  // The WordPress post is already live at this point, so a failed write here
+  // leaves it unguarded: the next hourly run would see no draft on record and
+  // publish the same article again. Surface the failure loudly instead of
+  // discarding it — that silence is what produced four duplicate posts.
+  const { error: draftInsertError } = await db.from('generated_drafts').insert({
     article_id: articleId,
     draft_title: selectedTitle,
     draft_outline: draft.outline,
@@ -191,10 +229,20 @@ export async function generateDraftForArticle(
     },
   });
 
-  await db.from('article_actions').insert({
+  const { error: actionInsertError } = await db.from('article_actions').insert({
     article_id: articleId,
     action_type: 'generate_blog_draft',
   });
+
+  if (draftInsertError || actionInsertError) {
+    const detail = [draftInsertError?.message, actionInsertError?.message].filter(Boolean).join(' / ');
+    logger.error('WordPress post is live but could not be recorded — duplicate risk', {
+      articleId,
+      wpPostId,
+      error: detail,
+    });
+    await recordUnrecordedPostAlert(articleId, wpPostId, detail);
+  }
 
   logger.info('Draft processed', { articleId, wpPostId, title: selectedTitle, status: wpStatus });
   return { wpPostId };

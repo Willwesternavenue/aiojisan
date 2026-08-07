@@ -34,3 +34,28 @@ export async function recordQuotaAlert(
     logger.warn('Failed to record quota alert', { source, err: String(err) });
   }
 }
+
+/**
+ * Record that a WordPress post went live but could not be written to the
+ * database. Such a post is unguarded: the next run sees no draft on record
+ * and can publish the same article again. Not deduplicated — every
+ * occurrence names a distinct orphaned post that needs manual cleanup.
+ * Never throws; the post is already live and alerting must not mask that.
+ */
+export async function recordUnrecordedPostAlert(
+  articleId: string,
+  wpPostId: number,
+  detail: string,
+): Promise<void> {
+  try {
+    const db = getAdminClient();
+    await db.from('system_alerts').insert({
+      source: 'wordpress',
+      kind: 'unrecorded_post',
+      message: `WordPress post ${wpPostId} is live but was not recorded (article ${articleId}): ${detail}`.slice(0, 500),
+    });
+    logger.error('Unrecorded live post alert recorded', { articleId, wpPostId });
+  } catch (err) {
+    logger.warn('Failed to record unrecorded-post alert', { articleId, wpPostId, err: String(err) });
+  }
+}
