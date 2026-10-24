@@ -20,7 +20,8 @@ export type AlertKind =
   | 'category_failed'  // category assignment failed; post is live uncategorised
   | 'social_failed'    // X post failed; article published but never shared
   | 'source_failed'    // a whole source failed to ingest
-  | 'research_failed'; // web research failed; draft written without live sources
+  | 'research_failed'  // web research failed; draft written without live sources
+  | 'thin_body';       // pages fetch fine but carry no article text
 
 /**
  * Core alert writer. Never throws — alerting must not mask the failure it
@@ -181,4 +182,65 @@ export async function recordResearchFailureAlert(
     dedupeWindowHours: 6,
     dedupeKey: 'research failed',
   });
+}
+
+/**
+ * A source returned pages that fetched fine but carried almost no text, with
+ * no feed summary to fall back on. This is what a move to client-side
+ * rendering looks like from here: every request succeeds, nothing is stored,
+ * and no error is ever raised. Deduplicated per source on a 24h window —
+ * the condition persists until the source is fixed or disabled, so re-alerting
+ * every 15 minutes would only bury the rest.
+ */
+export async function recordThinBodyAlert(
+  sourceName: string,
+  skipped: number,
+  found: number,
+): Promise<void> {
+  await recordAlert({
+    source: 'ingestion',
+    kind: 'thin_body',
+    message: `source "${sourceName}": ${skipped}/${found} pages had no usable text — the site may now render its articles with JavaScript`,
+    dedupeKey: `source "${sourceName}":`,
+    dedupeWindowHours: 24,
+  });
+}
+
+/**
+ * Clear alerts of one kind once the underlying condition is gone.
+ *
+ * Alerts are a to-do list, not a history: an X post that failed yesterday and
+ * succeeded today should stop asking for attention, or the dashboard fills
+ * with items nobody can act on and the real ones get lost. Callers resolve a
+ * kind when they have positive evidence it is fixed — a later success, not
+ * merely the absence of another failure.
+ *
+ * Never throws: clearing is housekeeping and must not break the success path
+ * that triggered it.
+ */
+export async function resolveAlerts(kind: AlertKind, dedupeKey?: string): Promise<void> {
+  try {
+    const db = getAdminClient();
+    let query = db.from('system_alerts').delete().eq('kind', kind);
+    if (dedupeKey) query = query.ilike('message', `%${dedupeKey}%`);
+
+    const { error } = await query;
+    if (error) {
+      logger.warn('Failed to resolve alerts', { kind, error: error.message });
+      return;
+    }
+    logger.info('Alerts resolved', { kind, scope: dedupeKey ?? '(all)' });
+  } catch (err) {
+    logger.warn('Failed to resolve alerts', { kind, err: String(err) });
+  }
+}
+
+/**
+ * A post went out to X, so the X credentials work again. Clears every
+ * social_failed alert, not just this post's: they all had the same cause —
+ * an expired token — and a later success means none of them still needs
+ * attention.
+ */
+export async function resolveSocialFailureAlerts(): Promise<void> {
+  await resolveAlerts('social_failed');
 }

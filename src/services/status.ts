@@ -28,6 +28,7 @@ const ALERT_LABEL: Record<string, string> = {
   social_failed: 'X投稿失敗',
   source_failed: 'ソース取り込み失敗',
   research_failed: '下調べ失敗',
+  thin_body: '本文が取得できない',
 };
 
 const ALERT_ACTION: Record<string, string> = {
@@ -38,6 +39,7 @@ const ALERT_ACTION: Record<string, string> = {
   social_failed: '記事は公開済みだが未投稿。必要なら手動投稿',
   source_failed: 'ソース管理でフィードURLと疎通を確認',
   research_failed: '出典なしで書かれています。公開前に内容を確認',
+  thin_body: 'サイトがJS描画に変わった可能性。ソースの取得を確認',
 };
 
 function hoursSince(iso: string | null | undefined): number | null {

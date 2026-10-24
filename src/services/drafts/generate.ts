@@ -15,6 +15,7 @@ import {
   recordImageFailureAlert,
   recordSocialFailureAlert,
   recordUnrecordedPostAlert,
+  resolveSocialFailureAlerts,
 } from '@/services/alerts';
 import { createLogger } from '@/lib/logger';
 
@@ -213,6 +214,13 @@ export async function generateDraftForArticle(
           text,
           tone: result.tweeted ? '自動投稿済み' : '自動投稿スキップ',
         });
+
+        // A post that actually went out proves the credentials work again, so
+        // earlier failures are no longer anything to act on. Only `tweeted`
+        // counts: a deliberate skip says nothing about whether X is reachable.
+        if (result.tweeted) {
+          await resolveSocialFailureAlerts();
+        }
       } catch (xErr) {
         await recordSocialFailureAlert(wpPostId, String(xErr));
         logger.warn('X auto-post failed, post already published', {
