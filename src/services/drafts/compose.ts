@@ -14,6 +14,7 @@ import {
   publishWordPressPost,
 } from '@/services/wordpress/client';
 import { resolveWordPressTarget } from '@/services/wordpress/target';
+import { recordImageFailureAlert } from '@/services/images/alerts';
 import { createLogger } from '@/lib/logger';
 import type { ResearchSource } from '@/types/ai';
 
@@ -218,6 +219,7 @@ export async function composeDraftForTopic(input: ComposeInput): Promise<Compose
         wpPostId,
         err: String(err),
       });
+      await recordImageFailureAlert(wpPostId, draft.slug, String(err));
     }
   }
 

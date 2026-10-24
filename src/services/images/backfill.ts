@@ -5,6 +5,7 @@ import {
   generateAndAttachFeaturedImage,
 } from '@/services/wordpress/client';
 import { detectPillarCategories } from '@/services/editorial/pillars';
+import { recordImageFailureAlert } from './alerts';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('image-backfill');
@@ -44,6 +45,7 @@ export async function backfillMissingFeaturedImages(
     } catch (err) {
       failed++;
       logger.warn('Backfill image generation failed', { postId: post.id, err: String(err) });
+      await recordImageFailureAlert(post.id, post.slug, String(err));
     }
   }
 

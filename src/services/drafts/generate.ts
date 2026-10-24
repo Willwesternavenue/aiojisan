@@ -10,7 +10,7 @@ import {
 } from '@/services/wordpress/client';
 import { postToX } from '@/services/social/x';
 import { detectPillarCategories, type PillarCategory } from '@/services/editorial/pillars';
-import { recordUnrecordedPostAlert } from '@/services/images/alerts';
+import { recordImageFailureAlert, recordUnrecordedPostAlert } from '@/services/images/alerts';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('draft-generator');
@@ -177,6 +177,7 @@ export async function generateDraftForArticle(
         wpPostId,
         err: String(imgErr),
       });
+      await recordImageFailureAlert(wpPostId, draft.slug, String(imgErr));
     }
 
     if (!skipSocial) {

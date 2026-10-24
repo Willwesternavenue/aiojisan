@@ -59,3 +59,37 @@ export async function recordUnrecordedPostAlert(
     logger.warn('Failed to record unrecorded-post alert', { articleId, wpPostId, err: String(err) });
   }
 }
+
+/**
+ * Record that featured-image generation failed for an already-published post.
+ * The post stays live without an image, which is only discoverable by eye —
+ * three such posts sat unnoticed for two weeks before this alert existed.
+ * Deduplicated per post so a repeated backfill attempt does not pile up rows.
+ * Never throws; the post is already published and alerting must not mask that.
+ */
+export async function recordImageFailureAlert(
+  wpPostId: number,
+  slug: string,
+  detail: string,
+): Promise<void> {
+  try {
+    const db = getAdminClient();
+    const { data: existing } = await db
+      .from('system_alerts')
+      .select('id')
+      .eq('kind', 'image_failed')
+      .ilike('message', `%post ${wpPostId}:%`)
+      .limit(1)
+      .maybeSingle();
+    if (existing) return;
+
+    await db.from('system_alerts').insert({
+      source: 'image',
+      kind: 'image_failed',
+      message: `post ${wpPostId}: featured image failed for "${slug}" — ${detail}`.slice(0, 500),
+    });
+    logger.error('Image failure alert recorded', { wpPostId, slug });
+  } catch (err) {
+    logger.warn('Failed to record image failure alert', { wpPostId, err: String(err) });
+  }
+}
