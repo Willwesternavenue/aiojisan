@@ -31,32 +31,67 @@ type RunRow = {
 };
 const recentRuns = (recentRunsRaw ?? []) as RunRow[];
 
-// Quota alerts (last 7 days) — surfaced when image-generation credits run out
-type AlertRow = { source: string; message: string; created_at: string };
-let quotaAlerts: AlertRow[] = [];
+// System alerts (last 7 days). Several pipeline steps swallow their failures
+// so a provider hiccup never blocks publishing; this is where those surface.
+type AlertRow = { source: string; kind: string; message: string; created_at: string };
+let alerts: AlertRow[] = [];
 try {
   const { data } = await db
     .from('system_alerts')
-    .select('source, message, created_at')
+    .select('source, kind, message, created_at')
     .gte('created_at', new Date(Date.now() - 7 * 24 * 3600_000).toISOString())
     .order('created_at', { ascending: false })
-    .limit(5);
-  quotaAlerts = (data ?? []) as AlertRow[];
+    .limit(20);
+  alerts = (data ?? []) as AlertRow[];
 } catch {
-  quotaAlerts = [];
+  alerts = [];
 }
+
+const ALERT_LABEL: Record<string, string> = {
+  quota:           'AIクレジット枯渇',
+  unrecorded_post: '記録なしの公開記事',
+  image_failed:    'アイキャッチ生成失敗',
+  category_failed: 'カテゴリ未付与',
+  social_failed:   'X投稿失敗',
+  source_failed:   'ソース取り込み失敗',
+  research_failed: '下調べ失敗',
+};
+
+const ALERT_ACTION: Record<string, string> = {
+  quota:           '各プロバイダの残高を確認してください',
+  unrecorded_post: 'WordPress側に記録のない記事が残っています。重複の恐れがあります',
+  image_failed:    '下書き履歴の「画像が無い記事に一括生成」で補完できます',
+  category_failed: '記事が柱の一覧に出ません。WordPressでカテゴリを付けてください',
+  social_failed:   '記事は公開済みですが未投稿です。必要なら手動で投稿してください',
+  source_failed:   'ソース管理でフィードURLと疎通を確認してください',
+  research_failed: '出典なしで書かれています。公開前に内容を確認してください',
+};
 ---
 
 <AdminLayout title="ダッシュボード" activeNav="dashboard">
-  {quotaAlerts.length > 0 && (
-    <div class="mb-6 px-4 py-3 rounded-md bg-red-50 border border-red-200 text-sm text-red-700">
-      <p class="font-semibold mb-1">⚠️ 画像生成のクレジット枯渇を検知しました</p>
-      {quotaAlerts.map(a => (
-        <p class="text-xs">
-          {a.source === 'gemini' ? 'Gemini（AI Studio）' : 'OpenAI'}
-          ・{new Date(a.created_at).toLocaleString('ja-JP')} — 残高を確認してください
-        </p>
-      ))}
+  {alerts.length > 0 && (
+    <div class="mb-6 border border-score-low/30 rounded-md overflow-hidden">
+      <p class="px-4 py-2 bg-score-lowBg text-score-low text-sm font-semibold">
+        要確認 {alerts.length} 件（過去7日）
+      </p>
+      <ul class="divide-y divide-border bg-surface">
+        {alerts.map(a => (
+          <li class="px-4 py-3">
+            <div class="flex items-baseline gap-2 flex-wrap">
+              <span class="text-xs font-medium text-score-low">
+                {ALERT_LABEL[a.kind] ?? a.kind}
+              </span>
+              <span class="text-xs text-text-muted">
+                {new Date(a.created_at).toLocaleString('ja-JP')}
+              </span>
+            </div>
+            <p class="text-xs text-text-secondary mt-1">
+              {ALERT_ACTION[a.kind] ?? a.message}
+            </p>
+            <p class="text-[11px] text-text-muted mt-0.5 font-mono break-all">{a.message}</p>
+          </li>
+        ))}
+      </ul>
     </div>
   )}
   <!-- Stats row -->

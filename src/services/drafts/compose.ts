@@ -14,7 +14,7 @@ import {
   publishWordPressPost,
 } from '@/services/wordpress/client';
 import { resolveWordPressTarget } from '@/services/wordpress/target';
-import { recordImageFailureAlert } from '@/services/images/alerts';
+import { recordImageFailureAlert, recordResearchFailureAlert } from '@/services/alerts';
 import { createLogger } from '@/lib/logger';
 import type { ResearchSource } from '@/types/ai';
 
@@ -70,6 +70,7 @@ export async function composeDraftForTopic(input: ComposeInput): Promise<Compose
     findings = research.findings;
     sources = research.sources;
   } catch (err) {
+    await recordResearchFailureAlert(topic, String(err));
     logger.warn('Topic research failed, continuing without live sources', {
       topic: topic.slice(0, 80),
       err: String(err),

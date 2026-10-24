@@ -3,6 +3,7 @@
 
 import { getAdminClient } from '@/lib/supabase/server';
 import { getEnabledSources } from '@/lib/supabase/queries';
+import { recordSourceFailureAlert } from '@/services/alerts';
 import { createLogger } from '@/lib/logger';
 import { fetchCandidates, fetchPage } from './fetcher';
 import { extractArticle } from './extractor';
@@ -118,6 +119,7 @@ export async function runSourceIngestion(source: Source): Promise<IngestionResul
     const msg = String(err);
     logger.error('Source run failed', { source: source.name, err: msg });
     result.errors.push(msg);
+    await recordSourceFailureAlert(source.name, msg);
 
     if (runId) {
       await db.from('source_runs').update({

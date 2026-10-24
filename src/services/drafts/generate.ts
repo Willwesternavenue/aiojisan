@@ -10,7 +10,12 @@ import {
 } from '@/services/wordpress/client';
 import { postToX } from '@/services/social/x';
 import { detectPillarCategories, type PillarCategory } from '@/services/editorial/pillars';
-import { recordImageFailureAlert, recordUnrecordedPostAlert } from '@/services/images/alerts';
+import {
+  recordCategoryFailureAlert,
+  recordImageFailureAlert,
+  recordSocialFailureAlert,
+  recordUnrecordedPostAlert,
+} from '@/services/alerts';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('draft-generator');
@@ -124,6 +129,9 @@ export async function generateDraftForArticle(
   const selectedTitle = draft.titleOptions[0];
   const wpStatus = autoPublish ? 'publish' : 'draft';
   const categoryIds: number[] = [];
+  // Category lookups happen before the post exists, so failures are collected
+  // here and alerted once the post id is known.
+  const failedCategories: Array<{ slug: string; err: string }> = [];
 
   const pillarCategories = detectPillarCategories([
     article.title,
@@ -148,6 +156,7 @@ export async function generateDraftForArticle(
         category: category.slug,
         err: String(categoryErr),
       });
+      failedCategories.push({ slug: category.slug, err: String(categoryErr) });
     }
   }
 
@@ -160,6 +169,12 @@ export async function generateDraftForArticle(
     categoryIds,
     publishDate,
   );
+
+  // The post is live now, so a category that failed above left it out of its
+  // pillar listing on the public site — surface that rather than only logging.
+  for (const failure of failedCategories) {
+    await recordCategoryFailureAlert(wpPostId, failure.slug, failure.err);
+  }
 
   // Generate and attach featured image for auto-published articles only
   if (autoPublish) {
@@ -199,6 +214,7 @@ export async function generateDraftForArticle(
           tone: result.tweeted ? '自動投稿済み' : '自動投稿スキップ',
         });
       } catch (xErr) {
+        await recordSocialFailureAlert(wpPostId, String(xErr));
         logger.warn('X auto-post failed, post already published', {
           articleId,
           wpPostId,

@@ -10,7 +10,7 @@ import { GoogleGenAI } from '@google/genai';
 import OpenAI from 'openai';
 import { getGoogleAiKey, getOpenAiKey } from '@/lib/env';
 import { createLogger } from '@/lib/logger';
-import { recordQuotaAlert } from './alerts';
+import { recordQuotaAlert } from '@/services/alerts';
 
 const logger = createLogger('image-provider');
 

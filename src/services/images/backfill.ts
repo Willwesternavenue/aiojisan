@@ -5,7 +5,7 @@ import {
   generateAndAttachFeaturedImage,
 } from '@/services/wordpress/client';
 import { detectPillarCategories } from '@/services/editorial/pillars';
-import { recordImageFailureAlert } from './alerts';
+import { recordImageFailureAlert } from '@/services/alerts';
 import { createLogger } from '@/lib/logger';
 
 const logger = createLogger('image-backfill');
