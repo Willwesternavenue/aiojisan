@@ -32,6 +32,25 @@ export function requireCronAuth(request: Request): Response | null {
   return null;
 }
 
+// ── Read-only status auth ──────────────────────────────────────────────────
+// GET /api/status is consumed by external routines that only read. They get
+// STATUS_TOKEN rather than CRON_SECRET, which can start a publish run.
+// CRON_SECRET is still accepted so existing manual checks keep working.
+
+export function requireStatusAuth(request: Request): Response | null {
+  const token = import.meta.env.STATUS_TOKEN as string | undefined;
+
+  if (token) {
+    const authHeader = request.headers.get('authorization');
+    if (authHeader === `Bearer ${token}`) return null;
+
+    const url = new URL(request.url);
+    if (url.searchParams.get('status_token') === token) return null;
+  }
+
+  return requireCronAuth(request);
+}
+
 // ── Admin session auth ─────────────────────────────────────────────────────
 // Validates the JWT stored in the admin_session cookie against Supabase Auth.
 // Returns null if valid (proceed), or a redirect Response if not.

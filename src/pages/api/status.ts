@@ -5,10 +5,11 @@
 // agent can read it alongside whatever else it reports on, and say something
 // useful without being taught the schema.
 //
-// Auth: CRON_SECRET, same as the cron routes (bearer header or ?cron_secret=).
+// Auth: STATUS_TOKEN (read-only), or CRON_SECRET for manual checks.
+// Bearer header or ?status_token= / ?cron_secret=.
 
 import type { APIRoute } from 'astro';
-import { requireCronAuth } from '@/lib/auth';
+import { requireStatusAuth } from '@/lib/auth';
 import { getAdminClient } from '@/lib/supabase/server';
 import { createLogger } from '@/lib/logger';
 
@@ -51,7 +52,7 @@ function jstDayStart(daysAgo = 0): string {
 }
 
 export const GET: APIRoute = async ({ request }) => {
-  const authError = requireCronAuth(request);
+  const authError = requireStatusAuth(request);
   if (authError) return authError;
 
   try {
