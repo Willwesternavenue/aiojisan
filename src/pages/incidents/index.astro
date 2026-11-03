@@ -1,0 +1,229 @@
+---
+import PublicLayout from '@/layouts/PublicLayout.astro';
+import {
+  AI_INCIDENTS,
+  INCIDENT_CATEGORIES,
+  INCIDENT_STATUS_LABELS,
+  getIncidentCategory,
+  incidentCountsByCategory,
+  isIncidentListPublished,
+  latestIncidentDate,
+  sortedIncidents,
+  type IncidentCategorySlug,
+} from '@/services/editorial/incidents';
+
+const requestedCategory = Astro.url.searchParams.get('category');
+const activeCategory = INCIDENT_CATEGORIES.find(
+  category => category.slug === requestedCategory,
+)?.slug as IncidentCategorySlug | undefined;
+
+const published = isIncidentListPublished();
+const all = sortedIncidents(AI_INCIDENTS);
+const incidents = activeCategory
+  ? all.filter(incident => incident.category === activeCategory)
+  : all;
+const categoryCounts = incidentCountsByCategory(all);
+
+const asOf = latestIncidentDate(all);
+const asOfLabel = asOf ? new Date(asOf).toLocaleDateString('ja-JP') : null;
+
+const canonicalUrl = 'https://www.aiojisan.com/incidents';
+const title = '国内AIインシデント一覧';
+const description =
+  '国内の組織が関係するAI関連インシデントを、一次情報つきで時系列に並べた一覧。情報漏洩、誤出力、不正利用、物理的な安全など分類ごとに追えます。';
+
+// Dataset は実データがあるときだけ出す（空の一覧を構造化データで主張しない）。
+const jsonLd = published
+  ? {
+      '@context': 'https://schema.org',
+      '@type': 'Dataset',
+      name: title,
+      description,
+      url: canonicalUrl,
+      dateModified: asOf ?? undefined,
+      isAccessibleForFree: true,
+      creator: {
+        '@type': 'Organization',
+        name: 'AIおじさんのひとりごと',
+        url: 'https://www.aiojisan.com',
+      },
+      variableMeasured: ['公表日', '組織・サービス', '分類', '概要', '影響', '状態', '一次情報'],
+    }
+  : undefined;
+
+function formatDate(value: string): string {
+  return new Date(value).toLocaleDateString('ja-JP');
+}
+---
+
+<PublicLayout
+  title={title}
+  description={description}
+  canonical={canonicalUrl}
+  jsonLd={jsonLd}
+  noindex={!published}
+>
+  <div class="max-w-admin mx-auto px-6 py-12">
+
+    <h1 class="text-3xl font-semibold text-text-primary mb-4">{title}</h1>
+
+    <p class="text-text-secondary leading-relaxed max-w-prose mb-2">
+      国内の組織が関係するAI関連のインシデントを、一次情報を確認できたものだけ時系列に並べています。
+    </p>
+    {asOfLabel && (
+      <p class="text-xs text-text-muted mb-8">最終更新 {asOfLabel} · {all.length} 件</p>
+    )}
+
+    {!published && (
+      <div class="my-10 p-6 border border-border rounded-lg bg-surface max-w-prose">
+        <h2 class="text-base font-semibold text-text-primary mb-2">準備中です</h2>
+        <p class="text-sm text-text-secondary leading-relaxed">
+          掲載基準を満たす事例の確認を進めています。一次情報が取れたものから順に掲載します。
+        </p>
+      </div>
+    )}
+
+    {published && (
+      <>
+        <!-- 分類フィルタ -->
+        <nav class="flex flex-wrap gap-2 mb-8" aria-label="分類で絞り込む">
+          <a
+            href="/incidents"
+            class:list={[
+              'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors',
+              !activeCategory
+                ? 'border-accent text-accent'
+                : 'border-border text-text-secondary hover:border-accent/40 hover:text-accent',
+            ]}
+          >
+            すべて（{all.length}）
+          </a>
+          {categoryCounts
+            .filter(category => category.count > 0)
+            .map(category => (
+              <a
+                href={`/incidents?category=${category.slug}`}
+                title={category.description}
+                class:list={[
+                  'px-3 py-1.5 rounded-full text-xs font-medium border transition-colors',
+                  activeCategory === category.slug
+                    ? 'border-accent text-accent'
+                    : 'border-border text-text-secondary hover:border-accent/40 hover:text-accent',
+                ]}
+              >
+                {category.label}（{category.count}）
+              </a>
+            ))}
+        </nav>
+
+        <!-- 一覧 -->
+        <div class="space-y-4">
+          {incidents.map(incident => (
+            <article class="p-5 border border-border rounded-lg bg-surface">
+              <div class="flex flex-wrap items-center gap-3 mb-2">
+                <time class="text-xs text-text-muted tabular-nums" datetime={incident.reportedOn}>
+                  {formatDate(incident.reportedOn)} 公表
+                </time>
+                {incident.occurredOn && (
+                  <span class="text-xs text-text-muted">
+                    （発生 {formatDate(incident.occurredOn)}）
+                  </span>
+                )}
+                <span class="text-xs text-accent font-medium">
+                  {getIncidentCategory(incident.category).label}
+                </span>
+                <span class="text-xs text-text-secondary border border-border rounded-full px-2 py-0.5">
+                  {INCIDENT_STATUS_LABELS[incident.status]}
+                </span>
+              </div>
+
+              <h2 class="text-base font-semibold text-text-primary mb-1">
+                {incident.organization}
+                {incident.sector && (
+                  <span class="text-xs font-normal text-text-muted ml-2">{incident.sector}</span>
+                )}
+              </h2>
+
+              <p class="text-sm text-text-primary leading-relaxed mb-3">{incident.summary}</p>
+
+              <dl class="space-y-1.5 text-sm mb-3">
+                {incident.impact && (
+                  <div class="flex gap-2">
+                    <dt class="text-text-muted shrink-0 w-12">影響</dt>
+                    <dd class="text-text-secondary">{incident.impact}</dd>
+                  </div>
+                )}
+                {incident.response && (
+                  <div class="flex gap-2">
+                    <dt class="text-text-muted shrink-0 w-12">対応</dt>
+                    <dd class="text-text-secondary">{incident.response}</dd>
+                  </div>
+                )}
+              </dl>
+
+              <div class="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+                {incident.sources.map(source => (
+                  <a
+                    href={source.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    class="text-xs text-text-muted hover:text-accent transition-colors"
+                  >
+                    {source.publisher}「{source.title}」 ↗
+                  </a>
+                ))}
+                {incident.relatedArticles?.map(slug => (
+                  <a
+                    href={`/articles/${slug}`}
+                    class="text-xs text-accent hover:underline"
+                  >
+                    関連記事を読む →
+                  </a>
+                ))}
+              </div>
+            </article>
+          ))}
+        </div>
+
+        {incidents.length === 0 && (
+          <p class="text-sm text-text-secondary">この分類に該当する事例はまだありません。</p>
+        )}
+      </>
+    )}
+
+    <!-- 掲載基準 -->
+    <section class="mt-14 pt-8 border-t border-border max-w-prose">
+      <h2 class="text-lg font-semibold text-text-primary mb-4">掲載基準</h2>
+      <ul class="space-y-2 text-sm text-text-secondary leading-relaxed list-disc pl-5">
+        <li>国内の組織・サービスが関係しているもの。</li>
+        <li>AIの利用または提供が原因の一部になっているもの。</li>
+        <li>
+          一次情報（当該組織の発表、行政・委員会の公表、当事者の報告書）で確認できるもの。
+          報道のみで当事者の確認が取れていないものは載せません。
+        </li>
+        <li>事実として書ける範囲が確定しているもの。推測や評価は書きません。</li>
+      </ul>
+      <p class="text-sm text-text-secondary leading-relaxed mt-4">
+        誤りを見つけた場合や、掲載内容について指摘がある場合は
+        <a href="/about" class="text-accent hover:underline">About</a>
+        のXアカウントまでご連絡ください。訂正した場合は、その旨を当該項目に残します。
+      </p>
+    </section>
+
+    <!-- 関連ガイド -->
+    <section class="mt-10 max-w-prose">
+      <a
+        href="/guides/physical-ai-security"
+        class="group block p-4 border border-border rounded-lg bg-surface hover:border-accent/40 transition-colors"
+      >
+        <span class="text-sm font-semibold text-text-primary group-hover:text-accent transition-colors">
+          フィジカルAIのセキュリティと安全設計入門
+        </span>
+        <span class="block text-xs text-text-secondary leading-relaxed mt-1">
+          何が危ないか、どう設計するか。ロボット・工場にAIを入れる前に読むまとめ。
+        </span>
+      </a>
+    </section>
+
+  </div>
+</PublicLayout>

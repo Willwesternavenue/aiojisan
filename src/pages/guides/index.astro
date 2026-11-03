@@ -1,0 +1,59 @@
+---
+import PublicLayout from '@/layouts/PublicLayout.astro';
+import { GUIDES, flattenSections, guideArticleSlugs } from '@/services/editorial/guides';
+
+const guides = GUIDES.map(guide => ({
+  slug: guide.slug,
+  title: guide.title,
+  description: guide.description,
+  sectionCount: flattenSections(guide).length,
+  articleCount: guideArticleSlugs(guide).length,
+  reviewedOn: new Date(guide.reviewedOn).toLocaleDateString('ja-JP'),
+}));
+
+const canonicalUrl = 'https://www.aiojisan.com/guides';
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'CollectionPage',
+  name: 'ガイド',
+  description: 'ひとつのテーマを1本で追えるまとめ記事。',
+  url: canonicalUrl,
+  hasPart: guides.map(guide => ({
+    '@type': 'Article',
+    headline: guide.title,
+    url: `${canonicalUrl}/${guide.slug}`,
+  })),
+};
+---
+
+<PublicLayout
+  title="ガイド"
+  description="ひとつのテーマを1本で追えるまとめ記事。個別記事の前に読む入口として置いています。"
+  canonical={canonicalUrl}
+  jsonLd={jsonLd}
+>
+  <div class="max-w-prose mx-auto px-6 py-12">
+    <h1 class="text-3xl font-semibold text-text-primary mb-4">ガイド</h1>
+    <p class="text-text-secondary leading-relaxed mb-10">
+      ひとつのテーマを1本で追えるまとめ記事です。各節から、個別の事例や実装を扱った記事に入れます。
+    </p>
+
+    <div class="space-y-4">
+      {guides.map(guide => (
+        <a
+          href={`/guides/${guide.slug}`}
+          class="group block p-5 border border-border rounded-lg bg-surface hover:border-accent/40 transition-colors"
+        >
+          <h2 class="text-lg font-semibold text-text-primary leading-snug group-hover:text-accent transition-colors mb-2">
+            {guide.title}
+          </h2>
+          <p class="text-sm text-text-secondary leading-relaxed mb-3">{guide.description}</p>
+          <p class="text-xs text-text-muted">
+            {guide.sectionCount} 節 · 関連記事 {guide.articleCount} 本 · 最終更新 {guide.reviewedOn}
+          </p>
+        </a>
+      ))}
+    </div>
+  </div>
+</PublicLayout>

@@ -1,6 +1,7 @@
 ---
 import PublicLayout from '@/layouts/PublicLayout.astro';
 import { stripHtml } from '@/lib/html';
+import { findGuideForArticle } from '@/services/editorial/guides';
 
 const { slug } = Astro.params;
 
@@ -96,6 +97,9 @@ const featuredImage = post._embedded?.['wp:featuredmedia']?.[0];
 const categories = post._embedded?.['wp:term']?.[0] ?? [];
 const primaryCategory = categories[0];
 const relatedPosts = await fetchRelatedPosts(post);
+// If a guide links to this article, link back to it — the hub page's
+// mapping is the single source of truth, so the WordPress body stays untouched.
+const guideLink = findGuideForArticle(post.slug);
 const relatedArticles = relatedPosts.map(relatedPost => {
   const relatedCategory = relatedPost._embedded?.['wp:term']?.[0]?.[0];
   const relatedImage = relatedPost._embedded?.['wp:featuredmedia']?.[0];
@@ -211,6 +215,26 @@ const jsonLd = {
 
     <!-- Article body -->
     <div class="article-body" set:html={post.content.rendered} />
+
+    <!-- Hub page this article belongs to -->
+    {guideLink && (
+      <aside class="mt-10 p-5 border border-border rounded-lg bg-surface">
+        <p class="text-xs text-text-muted mb-2">
+          この記事は「{guideLink.section.heading}」のまとめから参照されています
+        </p>
+        <a
+          href={`/guides/${guideLink.guide.slug}#${guideLink.section.id}`}
+          class="group block"
+        >
+          <span class="text-sm font-semibold text-text-primary group-hover:text-accent transition-colors">
+            {guideLink.guide.title}
+          </span>
+          <span class="block text-xs text-text-secondary leading-relaxed mt-1">
+            {guideLink.guide.description}
+          </span>
+        </a>
+      </aside>
+    )}
 
     <!-- Source link -->
     <div class="mt-10 pt-6 border-t border-border">
