@@ -179,6 +179,32 @@ export const AI_INCIDENTS: AiIncident[] = [
     ],
   },
   {
+    id: '2026-10-osaka-sano-hs-fax-misdirection',
+    reportedOn: '2026-10-23',
+    occurredOn: '2026-05-15',
+    organization: '大阪府立佐野高等学校（大阪府教育庁）',
+    sector: '教育・自治体',
+    category: 'faulty-output',
+    summary:
+      '教員が大阪府高等学校野球連盟への報告書をFAXで送る際、AI検索で表示されたFAX番号に送信し、' +
+      '誤った宛先に届いた。大阪府は原因を、AI検索の情報を鵜呑みにしたうえ、' +
+      'あらかじめテスト送信などを行って番号を確認することを怠ったためと公表している。',
+    impact: '生徒6名分の氏名・学年・報告内容（大阪府発表）。',
+    response:
+      '誤送信先に連絡して報告書を廃棄してもらい、生徒と保護者に個別・直接の説明と謝罪を実施。' +
+      '校内研修の実施、個人情報を外部へ送信する際の管理職の許可、初めての送信先へのテスト送信と' +
+      '複数人での番号確認を徹底し、教育庁が全府立学校に注意喚起を行うとしている。',
+    status: 'resolved',
+    sources: [
+      {
+        title: '個人情報が記載された書類の誤送信について',
+        publisher: '大阪府（教育庁 教育振興室保健体育課）',
+        url: 'https://www.pref.osaka.lg.jp/hodo/fumin/o180070/prs_50751.html',
+        retrievedOn: '2026-11-03',
+      },
+    ],
+  },
+  {
     id: '2026-09-rizap-genai-upload',
     reportedOn: '2026-09-03',
     organization: 'RIZAP株式会社（特定保健指導の委託先）',
@@ -412,6 +438,33 @@ export const AI_INCIDENTS: AiIncident[] = [
         retrievedOn: '2026-11-03',
       },
     ],
+  },
+  {
+    id: '2023-10-eiheiji-zen-drive-bicycle-contact',
+    reportedOn: '2023-11-10',
+    occurredOn: '2023-10-29',
+    organization: 'まちづくり株式会社ZENコネクト／永平寺町（ZENドライブ）',
+    sector: '公共交通・自治体',
+    category: 'physical-safety',
+    summary:
+      'レベル4の自動運転車両が、対向車とのすれ違い待避所付近で、無人の駐輪自転車に車両左前のバンパーを接触させた。' +
+      'ミリ波レーダと超音波センサは正常に検知していたが、この区間は誤検知を抑えるため前方カメラの画像認識と' +
+      '合わせて自動ブレーキの制御判断を行う仕様で、無人の自転車を認識するための学習データが十分でなく、' +
+      'カメラからは自転車の真後ろしか見えず認識面積が小さかったため、認識できなかった。',
+    impact: 'けが人なし（乗客4名）。',
+    response:
+      '画像認識との整合がなくても接触の可能性がある物体を検知したら自動ブレーキをかけるよう制御判断を強化し、' +
+      '検知の難しい向きを含む無人の自転車の画像を追加学習させた。注意喚起看板の増設などの運用面の措置も実施。',
+    status: 'resolved',
+    sources: [
+      {
+        title: 'テーマ１：【福井県永平寺町】遠隔監視のみ(レベル４)自動運転サービスの実現に向けた取り組み',
+        publisher: 'RoAD to the L4プロジェクト成果報告会（経済産業省／産業技術総合研究所）',
+        url: 'https://www.road-to-the-l4.go.jp/activity/theme01/pdf/20240228_theme01.pdf',
+        retrievedOn: '2026-11-03',
+      },
+    ],
+    relatedArticles: ['physical-ai-safety-deterministic-supervisor'],
   },
 ];
 
