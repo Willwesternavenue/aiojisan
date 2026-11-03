@@ -15,7 +15,9 @@ export type IncidentCategorySlug =
   | 'data-leak'
   | 'faulty-output'
   | 'prompt-injection'
+  | 'ai-vulnerability'
   | 'credentials'
+  | 'impersonation'
   | 'physical-safety'
   | 'compliance'
   | 'outage';
@@ -40,12 +42,23 @@ export const INCIDENT_CATEGORIES: IncidentCategory[] = [
   {
     slug: 'prompt-injection',
     label: '不正利用・指示の乗っ取り',
-    description: 'プロンプトインジェクションや悪用により想定外の動作をした事例',
+    description:
+      'プロンプトインジェクションや悪用により想定外の動作をした事例と、攻撃側がAIツールを使った事例',
+  },
+  {
+    slug: 'ai-vulnerability',
+    label: 'AI機能の脆弱性',
+    description: 'AIアシスタントなどAI機能そのものの実装不備が原因になった事例',
   },
   {
     slug: 'credentials',
     label: '認証情報・権限',
     description: 'APIキーやアクセス権限の扱いが原因になった事例',
+  },
+  {
+    slug: 'impersonation',
+    label: 'なりすまし・合成コンテンツ',
+    description: '第三者が生成AIで作った偽の動画・音声・画像により、組織や個人が被害を受けた事例',
   },
   {
     slug: 'physical-safety',
@@ -136,6 +149,31 @@ export const AI_INCIDENTS: AiIncident[] = [
         title: '外部生成AIサービスへの個人情報アップロードに関するお詫びとお知らせ',
         publisher: 'パナソニック オペレーショナルエクセレンス株式会社',
         url: 'https://holdings.panasonic/jp/information/topics/20261023.html',
+        retrievedOn: '2026-11-03',
+      },
+    ],
+  },
+  {
+    id: '2026-10-jpcert-ai-pentest-tool-abuse',
+    reportedOn: '2026-10-23',
+    organization: '国内の複数組織（JPCERT/CCが注意喚起）',
+    sector: '横断',
+    category: 'prompt-injection',
+    summary:
+      'JPCERT/CCは、CairnやCyberStrikeAI、ARTEXなどのAIを用いたペネトレーションテスト基盤を悪用した' +
+      '攻撃試行を確認したと公表した。主にインターネットに公開されたWebアプリケーションを標的に、' +
+      'さまざまな脆弱性の探索・悪用や、機器の管理不備を突いた攻撃（環境設定ファイルやバックアップファイルの窃取など）' +
+      'が試みられている。インターネットに公開されたWSUSサーバーを標的とした攻撃試行も含まれる。',
+    impact:
+      '不審な送信元IPアドレス9件を観測日付つきで公表（調査時点では正規に利用されている可能性もあるとしている）。' +
+      '被害組織名は公表されていない。',
+    response: '注意喚起は2026年10月8日公開。このケースEは10月23日の更新で追加された。',
+    status: 'investigating',
+    sources: [
+      {
+        title: '直近で相次いでいる国内組織における不正アクセスに関する注意喚起（JPCERT-AT-2026-0030）',
+        publisher: 'JPCERT/CC',
+        url: 'https://www.jpcert.or.jp/at/2026/at260030.html',
         retrievedOn: '2026-11-03',
       },
     ],
@@ -318,6 +356,62 @@ export const AI_INCIDENTS: AiIncident[] = [
       },
     ],
     relatedArticles: ['physical-ai-safety-deterministic-supervisor'],
+  },
+  {
+    id: '2026-03-growi-ai-assistant-authz',
+    reportedOn: '2026-03-16',
+    organization: '株式会社GROWI（社内Wiki「GROWI」）',
+    sector: 'ソフトウェア',
+    category: 'ai-vulnerability',
+    summary:
+      'GROWI v7.4.5およびそれ以前のバージョンで、AIアシスタント機能のOpenAIスレッド・メッセージ APIに' +
+      '権限チェックの欠如（CWE-862、CVE-2026-25083）があった。共有AIアシスタントの識別子を把握している' +
+      'ログイン済みの利用者が、他の利用者のAIアシスタントのスレッド・メッセージを閲覧・改ざんできる可能性があった。',
+    impact: 'CVSS v4基本値8.7、CVSS v3基本値8.3（JVN）。',
+    response:
+      'v7.4.6で修正。GMOサイバーセキュリティ by イエラエ株式会社の小田切祥氏が製品開発者に報告し、' +
+      '調整を経てJVNで公表された。',
+    status: 'resolved',
+    sources: [
+      {
+        title: 'JVN#46373837 GROWIのOpenAIスレッド・メッセージ APIにおける権限チェック欠如の脆弱性',
+        publisher: 'JPCERT/CC・IPA（JVN）',
+        url: 'https://jvn.jp/jp/JVN46373837/',
+        retrievedOn: '2026-11-03',
+      },
+    ],
+  },
+  {
+    id: '2025-11-php-matsushita-deepfake',
+    reportedOn: '2025-11-11',
+    organization: '株式会社PHP研究所／パナソニック ホールディングス株式会社',
+    sector: '出版・製造',
+    category: 'impersonation',
+    summary:
+      '創業者・松下幸之助の画像や音声をAI技術により合成した動画が、YouTubeをはじめとするSNS上で' +
+      '出回っていることが確認された。PHP研究所は、本人の名誉と遺族の感情を著しく損なうもので' +
+      '違法な可能性が高いとし、パナソニックHDも、実際の発言等に基づかない誤った情報や、' +
+      '肖像・発言の無断使用が含まれる場合があるとして注意を呼びかけている。',
+    response:
+      '継続的な監視と、発見次第の調査・記録、プラットフォームへの削除申立てや法的措置の検討。' +
+      '閲覧・共有・転載をしないことと、SNSの「不正合成（deepfake）」「なりすまし」通報フォームからの' +
+      '報告を呼びかけている。パナソニックHDは、PHP研究所と共同開発中の「『松下幸之助』再現AI」とは' +
+      '無関係だと明記している。',
+    status: 'responding',
+    sources: [
+      {
+        title: '松下幸之助の偽造（AI合成）動画についての重要なお知らせ',
+        publisher: '株式会社PHP研究所（松下幸之助.com）',
+        url: 'https://konosuke-matsushita.com/news/media/20251111oshirase.php',
+        retrievedOn: '2026-11-03',
+      },
+      {
+        title: '創業者 松下幸之助のAI合成動画にご注意ください',
+        publisher: 'パナソニック ホールディングス株式会社',
+        url: 'https://holdings.panasonic/jp/information/topics/20251121.html',
+        retrievedOn: '2026-11-03',
+      },
+    ],
   },
 ];
 
