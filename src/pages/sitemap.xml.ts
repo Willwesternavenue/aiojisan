@@ -1,4 +1,6 @@
 import type { APIRoute } from 'astro';
+import { GUIDES } from '@/services/editorial/guides';
+import { isIncidentListPublished, latestIncidentDate } from '@/services/editorial/incidents';
 
 type SitemapEntry = {
   url: string;
@@ -16,6 +18,22 @@ export const GET: APIRoute = async ({ request }) => {
     { url: `${origin}/`, priority: '1.0', changefreq: 'daily' },
     { url: `${origin}/articles`, priority: '0.9', changefreq: 'daily' },
     { url: `${origin}/about`, priority: '0.5', changefreq: 'monthly' },
+    { url: `${origin}/guides`, priority: '0.8', changefreq: 'weekly' },
+    ...GUIDES.map(guide => ({
+      url: `${origin}/guides/${guide.slug}`,
+      lastmod: guide.reviewedOn,
+      priority: '0.9',
+      changefreq: 'weekly',
+    })),
+    // The incident list stays out of the sitemap until it has entries.
+    ...(isIncidentListPublished()
+      ? [{
+          url: `${origin}/incidents`,
+          lastmod: latestIncidentDate() ?? undefined,
+          priority: '0.8',
+          changefreq: 'weekly',
+        }]
+      : []),
   ];
 
   // Fetch all published posts from WordPress

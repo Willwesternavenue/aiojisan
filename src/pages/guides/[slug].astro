@@ -1,0 +1,322 @@
+---
+import PublicLayout from '@/layouts/PublicLayout.astro';
+import { stripHtml } from '@/lib/html';
+import {
+  flattenSections,
+  getGuide,
+  guideArticleSlugs,
+  type GuideSection,
+} from '@/services/editorial/guides';
+
+const guide = getGuide(Astro.params.slug);
+
+if (!guide) {
+  return Astro.redirect('/guides');
+}
+
+const base = import.meta.env.WORDPRESS_BASE_URL?.replace(/\/$/, '') ?? '';
+
+type WpPost = {
+  slug: string;
+  date: string;
+  title: { rendered: string };
+  excerpt?: { rendered: string };
+};
+
+type LinkedArticle = {
+  slug: string;
+  title: string;
+  excerpt: string;
+  publishedAt: string;
+};
+
+async function fetchPosts(params: URLSearchParams): Promise<WpPost[]> {
+  try {
+    params.set('status', 'publish');
+    const res = await fetch(`${base}/wp-json/wp/v2/posts?${params}`, { cache: 'no-store' });
+    if (!res.ok) return [];
+    return await res.json();
+  } catch {
+    // The guide's prose stands on its own; drop the link lists on failure.
+    return [];
+  }
+}
+
+function toLinkedArticle(post: WpPost): LinkedArticle {
+  return {
+    slug: post.slug,
+    title: stripHtml(post.title.rendered),
+    excerpt: stripHtml(post.excerpt?.rendered ?? '').slice(0, 110),
+    publishedAt: new Date(post.date).toLocaleDateString('ja-JP'),
+  };
+}
+
+const mappedSlugs = guideArticleSlugs(guide);
+
+const mappedPosts = mappedSlugs.length > 0
+  ? await fetchPosts(new URLSearchParams({
+      slug: mappedSlugs.join(','),
+      per_page: '100',
+      _fields: 'slug,date,title,excerpt',
+    }))
+  : [];
+
+const bySlug = new Map(mappedPosts.map(post => [post.slug, toLinkedArticle(post)]));
+
+/** Articles mapped to a section that actually exist in WordPress. */
+function sectionArticles(section: GuideSection): LinkedArticle[] {
+  return (section.articles ?? [])
+    .map(slug => bySlug.get(slug))
+    .filter((article): article is LinkedArticle => Boolean(article));
+}
+
+// 最新動向: recent posts whose title carries both a domain word and an aspect
+// word, so the block stays current without editing this page every month.
+const freshness = guide.freshness;
+const recentPosts = freshness
+  ? await fetchPosts(new URLSearchParams({
+      per_page: '40',
+      orderby: 'date',
+      order: 'desc',
+      _fields: 'slug,date,title,excerpt',
+    }))
+  : [];
+
+const latestArticles = recentPosts
+  .filter(post => !mappedSlugs.includes(post.slug))
+  .filter(post => {
+    if (!freshness) return false;
+    const title = stripHtml(post.title.rendered);
+    return (
+      freshness.domain.some(keyword => title.includes(keyword)) &&
+      freshness.aspect.some(keyword => title.includes(keyword))
+    );
+  })
+  .slice(0, 5)
+  .map(toLinkedArticle);
+
+const sections = flattenSections(guide);
+const topLevelSections = guide.sections;
+const reviewedOn = new Date(guide.reviewedOn).toLocaleDateString('ja-JP', {
+  year: 'numeric',
+  month: 'long',
+  day: 'numeric',
+});
+
+const canonicalUrl = `https://www.aiojisan.com/guides/${guide.slug}`;
+const linkedCount = bySlug.size;
+
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'Article',
+      headline: guide.title,
+      description: guide.description,
+      url: canonicalUrl,
+      dateModified: guide.reviewedOn,
+      articleSection: sections.map(section => section.heading),
+      author: {
+        '@type': 'Person',
+        name: 'AIおじさん',
+        url: 'https://www.aiojisan.com/about',
+      },
+      publisher: {
+        '@type': 'Organization',
+        name: 'AIおじさんのひとりごと',
+        url: 'https://www.aiojisan.com',
+      },
+      mainEntityOfPage: { '@type': 'WebPage', '@id': canonicalUrl },
+    },
+    {
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'ホーム', item: 'https://www.aiojisan.com' },
+        { '@type': 'ListItem', position: 2, name: 'ガイド', item: 'https://www.aiojisan.com/guides' },
+        { '@type': 'ListItem', position: 3, name: guide.title, item: canonicalUrl },
+      ],
+    },
+  ],
+};
+---
+
+<PublicLayout
+  title={guide.title}
+  description={guide.description}
+  canonical={canonicalUrl}
+  jsonLd={jsonLd}
+>
+  <article class="max-w-prose mx-auto px-6 py-12">
+
+    <nav class="mb-8 text-sm text-text-muted" aria-label="パンくず">
+      <a href="/guides" class="hover:text-accent transition-colors">← ガイド</a>
+    </nav>
+
+    <p class="text-xs text-accent font-medium mb-3">まとめ記事</p>
+
+    <h1 class="text-3xl font-semibold text-text-primary leading-tight mb-6">
+      {guide.title}
+    </h1>
+
+    <p class="text-xs text-text-muted mb-8">
+      最終更新 {reviewedOn}
+      {linkedCount > 0 && <span> · 関連記事 {linkedCount} 本</span>}
+    </p>
+
+    <div class="space-y-4 mb-10">
+      {guide.lead.map(paragraph => (
+        <p class="text-text-primary leading-relaxed">{paragraph}</p>
+      ))}
+    </div>
+
+    <!-- 目次 -->
+    <nav class="mb-12 p-5 border border-border rounded-lg bg-surface" aria-label="目次">
+      <h2 class="text-sm font-semibold text-text-primary mb-3">このページの内容</h2>
+      <ol class="space-y-1.5 text-sm">
+        {topLevelSections.map(section => (
+          <li>
+            <a href={`#${section.id}`} class="text-text-secondary hover:text-accent transition-colors">
+              {section.heading}
+            </a>
+          </li>
+        ))}
+        {guide.checklist && (
+          <li>
+            <a href="#checklist" class="text-text-secondary hover:text-accent transition-colors">
+              {guide.checklist.heading}
+            </a>
+          </li>
+        )}
+        {latestArticles.length > 0 && (
+          <li>
+            <a href="#latest" class="text-text-secondary hover:text-accent transition-colors">
+              最新動向
+            </a>
+          </li>
+        )}
+      </ol>
+    </nav>
+
+    <!-- 本文 -->
+    <div class="space-y-12">
+      {topLevelSections.map(section => (
+        <section id={section.id} class="scroll-mt-24">
+          <h2 class="text-xl font-semibold text-text-primary mb-4">{section.heading}</h2>
+
+          <div class="space-y-4">
+            {section.body.map(paragraph => (
+              <p class="text-text-primary leading-relaxed">{paragraph}</p>
+            ))}
+          </div>
+
+          {sectionArticles(section).length > 0 && (
+            <ul class="mt-5 space-y-2.5 border-l-2 border-border pl-4">
+              {sectionArticles(section).map(article => (
+                <li>
+                  <a href={`/articles/${article.slug}`} class="group block">
+                    <span class="text-sm font-medium text-text-primary group-hover:text-accent transition-colors">
+                      {article.title}
+                    </span>
+                    <span class="block text-xs text-text-muted mt-0.5">{article.publishedAt}</span>
+                  </a>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {section.sections && section.sections.length > 0 && (
+            <div class="mt-8 space-y-8">
+              {section.sections.map(sub => (
+                <section id={sub.id} class="scroll-mt-24">
+                  <h3 class="text-base font-semibold text-text-primary mb-3">{sub.heading}</h3>
+
+                  <div class="space-y-3">
+                    {sub.body.map(paragraph => (
+                      <p class="text-text-primary leading-relaxed">{paragraph}</p>
+                    ))}
+                  </div>
+
+                  {sectionArticles(sub).length > 0 && (
+                    <ul class="mt-4 space-y-2.5 border-l-2 border-border pl-4">
+                      {sectionArticles(sub).map(article => (
+                        <li>
+                          <a href={`/articles/${article.slug}`} class="group block">
+                            <span class="text-sm font-medium text-text-primary group-hover:text-accent transition-colors">
+                              {article.title}
+                            </span>
+                            <span class="block text-xs text-text-muted mt-0.5">{article.publishedAt}</span>
+                          </a>
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </section>
+              ))}
+            </div>
+          )}
+        </section>
+      ))}
+    </div>
+
+    <!-- チェックリスト -->
+    {guide.checklist && (
+      <section id="checklist" class="mt-12 pt-8 border-t border-border scroll-mt-24">
+        <h2 class="text-xl font-semibold text-text-primary mb-3">{guide.checklist.heading}</h2>
+        <p class="text-text-secondary text-sm leading-relaxed mb-5">{guide.checklist.intro}</p>
+        <ol class="space-y-2.5">
+          {guide.checklist.items.map((item, index) => (
+            <li class="flex gap-3 text-text-primary leading-relaxed">
+              <span class="text-xs text-text-muted pt-1 tabular-nums">{index + 1}.</span>
+              <span class="text-sm">{item}</span>
+            </li>
+          ))}
+        </ol>
+      </section>
+    )}
+
+    <!-- 最新動向 -->
+    {latestArticles.length > 0 && (
+      <section id="latest" class="mt-12 pt-8 border-t border-border scroll-mt-24">
+        <h2 class="text-xl font-semibold text-text-primary mb-2">最新動向</h2>
+        <p class="text-text-secondary text-sm leading-relaxed mb-5">
+          このテーマの新しい記事を自動で拾っています。
+        </p>
+        <ul class="space-y-3">
+          {latestArticles.map(article => (
+            <li>
+              <a href={`/articles/${article.slug}`} class="group block">
+                <span class="text-sm font-medium text-text-primary group-hover:text-accent transition-colors">
+                  {article.title}
+                </span>
+                <span class="block text-xs text-text-muted mt-0.5">{article.publishedAt}</span>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    )}
+
+    <!-- 関連ページ -->
+    {guide.seeAlso && guide.seeAlso.length > 0 && (
+      <section class="mt-12 pt-8 border-t border-border">
+        <h2 class="text-lg font-semibold text-text-primary mb-4">関連ページ</h2>
+        <div class="space-y-3">
+          {guide.seeAlso.map(link => (
+            <a
+              href={link.href}
+              class="group block p-4 border border-border rounded-lg bg-surface hover:border-accent/40 transition-colors"
+            >
+              <span class="text-sm font-semibold text-text-primary group-hover:text-accent transition-colors">
+                {link.label}
+              </span>
+              <span class="block text-xs text-text-secondary leading-relaxed mt-1">
+                {link.description}
+              </span>
+            </a>
+          ))}
+        </div>
+      </section>
+    )}
+
+  </article>
+</PublicLayout>
