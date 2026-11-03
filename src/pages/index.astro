@@ -2,6 +2,8 @@
 import PublicLayout from '@/layouts/PublicLayout.astro';
 import { EDITORIAL_DISPLAY_CATEGORIES as EDITORIAL_CATEGORIES } from '@/services/editorial/pillars';
 import { stripHtml } from '@/lib/html';
+import { GUIDES } from '@/services/editorial/guides';
+import { AI_INCIDENTS, isIncidentListPublished } from '@/services/editorial/incidents';
 
 type EditorialCategory = (typeof EDITORIAL_CATEGORIES)[number];
 
@@ -106,6 +108,10 @@ const homeJsonLd = {
     url: 'https://www.aiojisan.com/',
   },
 };
+// Hub pages: the homepage is their only sitewide entry point besides the nav.
+const featuredGuide = GUIDES[0] ?? null;
+const incidentCount = AI_INCIDENTS.length;
+const showIncidents = isIncidentListPublished();
 ---
 
 <PublicLayout
@@ -279,6 +285,45 @@ const homeJsonLd = {
       </div>
     )}
   </section>
+  <!-- Hub pages -->
+  {(featuredGuide || showIncidents) && (
+    <section class="max-w-admin mx-auto px-6 py-10">
+      <h2 class="text-xs font-medium text-text-muted uppercase tracking-widest mb-6">まとめて読む</h2>
+
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {featuredGuide && (
+          <a
+            href={`/guides/${featuredGuide.slug}`}
+            class="group block p-5 border border-border rounded-lg bg-surface hover:border-accent/40 transition-colors"
+          >
+            <span class="text-xs text-accent font-medium">まとめ記事</span>
+            <span class="block text-base font-semibold text-text-primary leading-snug mt-2 mb-2 group-hover:text-accent transition-colors">
+              {featuredGuide.title}
+            </span>
+            <span class="block text-sm text-text-secondary leading-relaxed">
+              ロボットや工場にAIを入れる前に。脅威の5つの入口、安全設計の考え方、導入前チェックリストまで1本で。
+            </span>
+          </a>
+        )}
+
+        {showIncidents && (
+          <a
+            href="/incidents"
+            class="group block p-5 border border-border rounded-lg bg-surface hover:border-accent/40 transition-colors"
+          >
+            <span class="text-xs text-accent font-medium">一覧</span>
+            <span class="block text-base font-semibold text-text-primary leading-snug mt-2 mb-2 group-hover:text-accent transition-colors">
+              国内AIインシデント一覧
+            </span>
+            <span class="block text-sm text-text-secondary leading-relaxed">
+              国内の組織が関係するAI関連のインシデントを、一次情報を確認できたものだけ時系列に。現在{incidentCount}件。
+            </span>
+          </a>
+        )}
+      </div>
+    </section>
+  )}
+
 </PublicLayout>
 
 <style>
