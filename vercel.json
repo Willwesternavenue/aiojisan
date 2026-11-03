@@ -1,4 +1,16 @@
 {
+  "redirects": [
+    {
+      "source": "/articles/gartner-2026-hype-cycle-physical-ai-peak",
+      "destination": "/articles/gartner-hype-cycle-2026-physical-ai-peak",
+      "permanent": true
+    },
+    {
+      "source": "/articles/ai-generated-code-api-key-leak",
+      "destination": "/articles/ai-agent-api-key-security-credential-management",
+      "permanent": true
+    }
+  ],
   "crons": [
     {
       "path": "/api/cron/fetch-sources",

@@ -27,18 +27,27 @@
       具体名を入れる場合は導入時点の一次情報で確認してから追記すること。
 - [ ] 公開後、Search Console で `/guides/physical-ai-security` の表示回数・掲載順位を確認。
 
-### 重複記事の統合候補
+### 重複記事の統合（2026-11-03 実施）
 
-まとめ記事からは代表記事1本だけにリンクし、統合は別作業にしています。
+3組を検討し、2組を統合、1組は残しました。統合した側は WordPress で下書きに戻し、
+旧スラッグからの301リダイレクトを `vercel.json` に置いています。
 
-| 残す | 統合を検討 |
-|---|---|
-| `gartner-hype-cycle-2026-physical-ai-peak` | `gartner-2026-hype-cycle-physical-ai-peak` |
-| `ai-agent-api-key-security-credential-management` | `ai-generated-code-api-key-leak` |
-| `physical-ai-safety-deterministic-supervisor` | `physical-ai-robotics-safety-design-shift` |
+| 残した記事 | 統合した記事 | 判断 |
+|---|---|---|
+| `gartner-hype-cycle-2026-physical-ai-peak` | `gartner-2026-hype-cycle-physical-ai-peak` | 統合。同じITmedia記事から同日に生成された重複。引用コメントも普及年数も同一 |
+| `ai-agent-api-key-security-credential-management` | `ai-generated-code-api-key-leak` | 統合。別テーマだが統合側は949字と薄く文体も不揃い。事故の実例として残す側に取り込んだ |
+| `physical-ai-safety-deterministic-supervisor` | （`physical-ai-robotics-safety-design-shift` は残した） | 統合せず。出典（Zenn / MONOist）も論点も別で、統合するとQNX調査の数字が落ちる |
 
-統合する場合は WordPress 側で本文をまとめ、旧スラッグから新スラッグへ301リダイレクトを設定し、
-`guides.ts` のスラッグを更新します。
+加筆の内容：
+
+- Gartner 記事に「ハイプ・サイクルの使い方」の節を追加（現在地の確認ツールであること、
+  普及が速い技術では幻滅期も圧縮されるため様子見が乗り遅れになること）。
+- APIキー記事に、フロントエンドに露出した鍵が悪用された事故を1段落追加。
+  **元記事に参考元リンクがなく、13時間・約900万円という数字の一次情報を確認できていないため、
+  「報じられている」という留保付きで書いています。** 出典が分かれば差し替えること。
+
+統合前の4本の原稿は作業時にバックアップを取っていますが、WordPress の
+リビジョン履歴からも復元できます。
 
 ### 新しく書く記事（優先順）
 
