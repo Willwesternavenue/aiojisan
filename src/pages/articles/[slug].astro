@@ -2,6 +2,7 @@
 import PublicLayout from '@/layouts/PublicLayout.astro';
 import { stripHtml } from '@/lib/html';
 import { findGuideForArticle } from '@/services/editorial/guides';
+import { findIncidentsForArticle, getIncidentCategory } from '@/services/editorial/incidents';
 
 const { slug } = Astro.params;
 
@@ -100,6 +101,7 @@ const relatedPosts = await fetchRelatedPosts(post);
 // If a guide links to this article, link back to it — the hub page's
 // mapping is the single source of truth, so the WordPress body stays untouched.
 const guideLink = findGuideForArticle(post.slug);
+const relatedIncidents = findIncidentsForArticle(post.slug);
 const relatedArticles = relatedPosts.map(relatedPost => {
   const relatedCategory = relatedPost._embedded?.['wp:term']?.[0]?.[0];
   const relatedImage = relatedPost._embedded?.['wp:featuredmedia']?.[0];
@@ -232,6 +234,31 @@ const jsonLd = {
           <span class="block text-xs text-text-secondary leading-relaxed mt-1">
             {guideLink.guide.description}
           </span>
+        </a>
+      </aside>
+    )}
+
+    <!-- Incidents that cite this article -->
+    {relatedIncidents.length > 0 && (
+      <aside class="mt-6 p-5 border border-border rounded-lg bg-surface">
+        <p class="text-xs text-text-muted mb-3">この記事に関連する、公表済みのインシデント</p>
+        <ul class="space-y-2.5">
+          {relatedIncidents.map(incident => (
+            <li>
+              <a href={`/incidents#${incident.id}`} class="group block">
+                <span class="text-sm font-medium text-text-primary group-hover:text-accent transition-colors">
+                  {incident.organization}
+                </span>
+                <span class="block text-xs text-text-muted mt-0.5">
+                  {new Date(incident.reportedOn).toLocaleDateString('ja-JP')} 公表 ·
+                  {' '}{getIncidentCategory(incident.category).label}
+                </span>
+              </a>
+            </li>
+          ))}
+        </ul>
+        <a href="/incidents" class="inline-block mt-3 text-sm text-accent hover:underline">
+          国内AIインシデント一覧を見る →
         </a>
       </aside>
     )}

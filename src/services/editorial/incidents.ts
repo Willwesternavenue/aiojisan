@@ -488,6 +488,16 @@ export function incidentCountsByCategory(
   }));
 }
 
+/** この記事を参照しているインシデント（記事ページからの逆リンク用）。 */
+export function findIncidentsForArticle(
+  articleSlug: string,
+  incidents: AiIncident[] = AI_INCIDENTS,
+): AiIncident[] {
+  return sortedIncidents(incidents).filter(incident =>
+    incident.relatedArticles?.includes(articleSlug),
+  );
+}
+
 /** 最後に1件追加・更新された日。空のときは null。 */
 export function latestIncidentDate(incidents: AiIncident[] = AI_INCIDENTS): string | null {
   return sortedIncidents(incidents)[0]?.reportedOn ?? null;

@@ -1,5 +1,6 @@
 ---
 import '@/styles/global.css';
+import { isIncidentListPublished } from '@/services/editorial/incidents';
 
 interface Props {
   title: string;
@@ -26,6 +27,8 @@ const siteUrl = 'https://www.aiojisan.com';
 const pageUrl = canonical ?? (siteUrl + Astro.url.pathname);
 const xProfileUrl = 'https://x.com/aiojisanblog';
 const feedUrl = `${siteUrl}/feed.xml`;
+// Linked sitewide only once it has something to show; while empty it is noindex.
+const showIncidents = isIncidentListPublished();
 ---
 
 <!DOCTYPE html>
@@ -92,6 +95,11 @@ const feedUrl = `${siteUrl}/feed.xml`;
         <a href="/guides" class="text-sm text-text-secondary hover:text-text-primary transition-colors">
           ガイド
         </a>
+        {showIncidents && (
+          <a href="/incidents" class="hidden sm:inline text-sm text-text-secondary hover:text-text-primary transition-colors">
+            インシデント
+          </a>
+        )}
         <a href="/about" class="text-sm text-text-secondary hover:text-text-primary transition-colors">
           About
         </a>
@@ -114,6 +122,9 @@ const feedUrl = `${siteUrl}/feed.xml`;
       <p class="text-xs text-text-muted">© 2026 AIおじさんのひとりごと</p>
       <div class="flex gap-4">
         <a href="/guides" class="text-xs text-text-muted hover:text-text-secondary transition-colors">ガイド</a>
+        {showIncidents && (
+          <a href="/incidents" class="text-xs text-text-muted hover:text-text-secondary transition-colors">インシデント一覧</a>
+        )}
         <a href="/about" class="text-xs text-text-muted hover:text-text-secondary transition-colors">About</a>
         <a href="/feed.xml" class="text-xs text-text-muted hover:text-text-secondary transition-colors">RSS</a>
         <a href={xProfileUrl} target="_blank" rel="noopener noreferrer"
