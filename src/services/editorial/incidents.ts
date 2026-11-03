@@ -440,7 +440,7 @@ export const AI_INCIDENTS: AiIncident[] = [
     ],
   },
   {
-    id: '2023-10-eiheiji-zen-drive-bicycle-contact',
+    id: '2023-11-eiheiji-zen-drive-bicycle-contact',
     reportedOn: '2023-11-10',
     occurredOn: '2023-10-29',
     organization: 'まちづくり株式会社ZENコネクト／永平寺町（ZENドライブ）',
