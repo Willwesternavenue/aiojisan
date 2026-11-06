@@ -102,7 +102,10 @@ const PHYSICAL_AI_SECURITY: Guide = {
             'エージェントが外部サービスやロボットの制御APIを叩く構成では、鍵の持ち方がそのまま権限の大きさになります。コード生成の過程で鍵が露出する経路も現実にあります。',
             '権限は用途ごとに分け、有効期限を切り、どの鍵がどの操作に使われたかを後から追える形にしておきます。',
           ],
-          articles: ['ai-agent-api-key-security-credential-management'],
+          articles: [
+            'artex-ai-autonomous-pentest-checklist',
+            'ai-agent-api-key-security-credential-management',
+          ],
         },
         {
           id: 'threat-sensors',
